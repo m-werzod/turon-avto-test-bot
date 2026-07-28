@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes an in-flight run on the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The suite never contacts Telegram, but settings are validated at import time
+  # so the required variables must be present and well-formed.
+  BOT_TOKEN: "123456789:CI-PLACEHOLDER-TOKEN-NOT-REAL"
+  ADMIN_IDS: "1001,1002"
+  DATABASE_URL: "sqlite+aiosqlite:///./ci.db"
+  TIMEZONE: "Asia/Tashkent"
+
+jobs:
+  quality:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check bot/ tests/ alembic/
+
+      - name: Black
+        run: black --check -l 100 bot/ tests/ alembic/
+
+      - name: Mypy
+        run: mypy bot/
+        continue-on-error: true
+
+      - name: Tests
+        run: pytest -q
+
+  migrations:
+    name: Migrations match models
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: turon
+          POSTGRES_PASSWORD: turon
+          POSTGRES_DB: turon_avto
+        options: >-
+          --health-cmd "pg_isready -U turon"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Upgrade to head
+        env:
+          DATABASE_URL: postgresql+asyncpg://turon:turon@localhost:5432/turon_avto
+        run: alembic upgrade head
+
+      - name: Fail if autogenerate finds drift
+        # A model changed without a matching migration is the failure this
+        # catches — it would otherwise only surface as a runtime error in
+        # production, long after the merge.
+        env:
+          DATABASE_URL: postgresql+asyncpg://turon:turon@localhost:5432/turon_avto
+        run: |
+          alembic revision --autogenerate -m "drift-check" --rev-id drift_check
+          if grep -qE '^\s+op\.(create|drop|alter|add)' alembic/versions/*drift_check*.py; then
+            echo "::error::Models and migrations disagree. Run 'alembic revision --autogenerate' and commit the result."
+            cat alembic/versions/*drift_check*.py
+            exit 1
+          fi
+          echo "No drift: migrations match the models."
+
+      - name: Downgrade cleanly
+        env:
+          DATABASE_URL: postgresql+asyncpg://turon:turon@localhost:5432/turon_avto
+        run: |
+          rm -f alembic/versions/*drift_check*.py
+          alembic downgrade base
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: turon-avto-test-bot:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Package imports inside the image
+        run: docker run --rm turon-avto-test-bot:ci python -c "import bot; print(bot.__version__)"
