@@ -1,0 +1,45 @@
+# ---- Secrets -------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---- Python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+
+# ---- Tooling -------------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# ---- Runtime artefacts ---------------------------------------------------
+logs/*.log
+logs/*.log.*
+!logs/.gitkeep
+media/images/
+!media/images/.gitkeep
+backups/
+!backups/.gitkeep
+
+# ---- Editors / OS --------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

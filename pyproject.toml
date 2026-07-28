@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turon-avto-test-bot"
+version = "1.0.0"
+description = "Production Telegram bot that publishes Uzbek driving-licence exam quizzes as Telegram quiz polls."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "m-werzod" }]
+
+dependencies = [
+    "aiogram>=3.15,<4.0",
+    "SQLAlchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "APScheduler>=3.10,<4.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "aiohttp>=3.10",
+    "openpyxl>=3.1",
+    "Pillow>=11.0",
+    "tzdata>=2024.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "aiosqlite>=0.20",
+    "black>=24.10",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[project.scripts]
+turon-bot = "bot.__main__:run"
+
+[tool.setuptools.packages.find]
+include = ["bot*"]
+
+[tool.setuptools.package-data]
+bot = ["locales/*.json"]
+
+# --- Formatting / linting -----------------------------------------------------
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["B008", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+"alembic/versions/*" = ["E501", "N999"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# --- Tests --------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
