@@ -1,0 +1,289 @@
+{
+  "source": "sample_uz",
+  "language": "uz",
+  "_readme": [
+    "SAMPLE DATA — NOT AN EXAM BANK.",
+    "These 20 questions exist so you can run the bot end to end (import, schedule,",
+    "quiz poll, cycle rollover) before you have your own content. They cover",
+    "universally standard road rules only.",
+    "",
+    "Replace this file with your own licensed question bank before going live.",
+    "Delete it from data/ once you do, or its questions will keep appearing in the",
+    "rotation alongside yours.",
+    "",
+    "FORMAT",
+    "  id          required, stable. The natural key with `source` - re-importing",
+    "              the same id updates in place instead of inserting a duplicate.",
+    "  question    required. Clamped to 300 characters (Telegram poll limit).",
+    "  options     required, exactly 4. Each clamped to 100 characters.",
+    "  correct     1-based option number (1-4). Use `correct_index` for 0-based,",
+    "              or `correct_answer` to give the answer as text.",
+    "  explanation optional. Clamped to 200 characters, shown after answering.",
+    "  image       optional URL. Downloaded once at import and cached on disk.",
+    "  category    optional topic label.",
+    "",
+    "CSV and XLSX work too - see README.md for the column layout."
+  ],
+  "questions": [
+    {
+      "id": "1",
+      "category": "Svetofor va tartibga soluvchi",
+      "question": "Svetoforning qizil chirog'i yonib turganda haydovchi nima qilishi kerak?",
+      "options": [
+        "To'xtash chizig'i oldida to'xtash",
+        "Ehtiyotkorlik bilan harakatni davom ettirish",
+        "Tezlikni oshirib o'tib ketish",
+        "Ovoz signalini berib o'tish"
+      ],
+      "correct": 1,
+      "explanation": "Qizil chiroq harakatni taqiqlaydi. To'xtash chizig'i oldida to'xtash shart."
+    },
+    {
+      "id": "2",
+      "category": "Svetofor va tartibga soluvchi",
+      "question": "Svetoforning sariq chirog'i yonganda nima qilish kerak?",
+      "options": [
+        "Harakatni to'xtatish va yashil chiroqni kutish",
+        "Tezlikni oshirish",
+        "Orqaga yurish",
+        "Chapga burilish"
+      ],
+      "correct": 1,
+      "explanation": "Sariq chiroq harakatni taqiqlaydi va signal almashishidan ogohlantiradi."
+    },
+    {
+      "id": "3",
+      "category": "Umumiy qoidalar",
+      "question": "Haydovchi qonuniy ravishda transport vositasini boshqarishi uchun qondagi alkogol miqdori qanday bo'lishi kerak?",
+      "options": [
+        "Umuman bo'lmasligi kerak",
+        "0,5 promilledan kam",
+        "1,0 promilledan kam",
+        "Ahamiyati yo'q"
+      ],
+      "correct": 1,
+      "explanation": "Alkogol ta'siri ostida transport vositasini boshqarish butunlay taqiqlanadi."
+    },
+    {
+      "id": "4",
+      "category": "Xavfsizlik",
+      "question": "Xavfsizlik kamari qachon taqilishi shart?",
+      "options": [
+        "Harakat davomida doimo",
+        "Faqat shahardan tashqarida",
+        "Faqat yuqori tezlikda",
+        "Faqat yomg'irli havoda"
+      ],
+      "correct": 1,
+      "explanation": "Xavfsizlik kamari harakat davomida doimo taqilgan bo'lishi shart."
+    },
+    {
+      "id": "5",
+      "category": "Piyodalar",
+      "question": "Tartibga solinmagan piyodalar o'tish joyiga yaqinlashayotgan haydovchi nima qilishi kerak?",
+      "options": [
+        "Piyodalarga yo'l berish",
+        "Ovoz signali berish",
+        "Tezlikni oshirish",
+        "O'tish joyida to'xtash"
+      ],
+      "correct": 1,
+      "explanation": "Piyodalar o'tish joyida piyodalar ustunlikka ega."
+    },
+    {
+      "id": "6",
+      "category": "Yo'l belgilari",
+      "question": "Uchburchak shaklidagi, qizil hoshiyali yo'l belgilari qanday belgilar hisoblanadi?",
+      "options": [
+        "Ogohlantiruvchi belgilar",
+        "Taqiqlovchi belgilar",
+        "Buyuruvchi belgilar",
+        "Axborot belgilari"
+      ],
+      "correct": 1,
+      "explanation": "Qizil hoshiyali uchburchak belgilar xavf haqida ogohlantiradi."
+    },
+    {
+      "id": "7",
+      "category": "Yo'l belgilari",
+      "question": "Doira shaklidagi, qizil hoshiyali belgilar nimani bildiradi?",
+      "options": [
+        "Taqiqni",
+        "Ogohlantirishni",
+        "Ustunlikni",
+        "Servis xizmatini"
+      ],
+      "correct": 1,
+      "explanation": "Qizil hoshiyali doiraviy belgilar taqiqlovchi belgilar hisoblanadi."
+    },
+    {
+      "id": "8",
+      "category": "Chorraha",
+      "question": "Teng ahamiyatli chorrahada haydovchi kimga yo'l berishi kerak?",
+      "options": [
+        "O'ng tomondan yaqinlashayotgan transportga",
+        "Chap tomondan yaqinlashayotgan transportga",
+        "Kattaroq transport vositasiga",
+        "Tezroq harakatlanayotgan transportga"
+      ],
+      "correct": 1,
+      "explanation": "Teng ahamiyatli chorrahada o'ng tomondan kelayotgan transport ustunlikka ega."
+    },
+    {
+      "id": "9",
+      "category": "Quvib o'tish",
+      "question": "Quyidagi holatlarning qaysi birida quvib o'tish taqiqlanadi?",
+      "options": [
+        "Piyodalar o'tish joyida",
+        "To'g'ri yo'l qismida",
+        "Kunduzi ochiq havoda",
+        "Ikki qatorli yo'lda"
+      ],
+      "correct": 1,
+      "explanation": "Piyodalar o'tish joyida va unga yaqinlashishda quvib o'tish taqiqlanadi."
+    },
+    {
+      "id": "10",
+      "category": "Tezlik",
+      "question": "Tezlikni tanlashda haydovchi nimaga asoslanishi kerak?",
+      "options": [
+        "Yo'l sharoiti va ko'rinish darajasiga",
+        "Faqat boshqa haydovchilarga",
+        "Faqat transport quvvatiga",
+        "Yo'lovchilar soniga"
+      ],
+      "correct": 1,
+      "explanation": "Tezlik yo'l sharoiti, ko'rinish va harakat jadalligiga mos bo'lishi kerak."
+    },
+    {
+      "id": "11",
+      "category": "Yorug'lik",
+      "question": "Tunda yoritilmagan yo'lda qanday chiroqlardan foydalanish kerak?",
+      "options": [
+        "Uzoq yoki yaqin nurli faralardan",
+        "Faqat gabarit chiroqlaridan",
+        "Faqat avariya signalidan",
+        "Hech qanday chiroqdan"
+      ],
+      "correct": 1,
+      "explanation": "Tunda yoritilmagan yo'lda faralar yoqilgan bo'lishi shart."
+    },
+    {
+      "id": "12",
+      "category": "Yorug'lik",
+      "question": "Qarama-qarshi transport yaqinlashganda uzoq nurli farani nima qilish kerak?",
+      "options": [
+        "Yaqin nurga o'tkazish",
+        "Yanada yorqinroq qilish",
+        "Butunlay o'chirish",
+        "O'zgartirmaslik"
+      ],
+      "correct": 1,
+      "explanation": "Qarshi haydovchini ko'r qilmaslik uchun yaqin nurga o'tish shart."
+    },
+    {
+      "id": "13",
+      "category": "Xavfsizlik",
+      "question": "Oldindagi transport vositasi bilan masofa nimaga bog'liq holda tanlanadi?",
+      "options": [
+        "Tezlik va yo'l qoplamasi holatiga",
+        "Transport rangiga",
+        "Yo'lovchilar soniga",
+        "Yoqilg'i miqdoriga"
+      ],
+      "correct": 1,
+      "explanation": "Masofa to'satdan to'xtashda to'qnashuvning oldini olishga yetarli bo'lishi kerak."
+    },
+    {
+      "id": "14",
+      "category": "Temir yo'l",
+      "question": "Temir yo'l kesishmasiga yaqinlashayotgan haydovchi nima qilishi kerak?",
+      "options": [
+        "Tezlikni pasaytirib, poyezd yo'qligiga ishonch hosil qilish",
+        "Tezlikni oshirib tez o'tib ketish",
+        "Kesishmada to'xtab dam olish",
+        "Orqaga qaytish"
+      ],
+      "correct": 1,
+      "explanation": "Temir yo'l kesishmasida poyezdlar so'zsiz ustunlikka ega."
+    },
+    {
+      "id": "15",
+      "category": "To'xtash",
+      "question": "Avariya to'xtash signali qachon yoqilishi kerak?",
+      "options": [
+        "Majburiy to'xtash yuz berganda",
+        "Har safar burilishda",
+        "Faqat kechqurun",
+        "Yoqilg'i quyishda"
+      ],
+      "correct": 1,
+      "explanation": "Avariya signali boshqa haydovchilarni xavf haqida ogohlantiradi."
+    },
+    {
+      "id": "16",
+      "category": "Ob-havo",
+      "question": "Yomg'irli va sirpanchiq yo'lda haydovchi nima qilishi kerak?",
+      "options": [
+        "Tezlikni pasaytirib, masofani oshirish",
+        "Tezlikni oshirish",
+        "Masofani qisqartirish",
+        "Faralarni o'chirish"
+      ],
+      "correct": 1,
+      "explanation": "Sirpanchiq yo'lda tormozlash masofasi sezilarli darajada uzayadi."
+    },
+    {
+      "id": "17",
+      "category": "Maxsus transport",
+      "question": "Ko'k rangli chiroq va ovoz signali yoqilgan maxsus transport yaqinlashganda nima qilish kerak?",
+      "options": [
+        "Yo'l berish",
+        "Tezlikni oshirish",
+        "Yo'lni to'sish",
+        "E'tibor bermaslik"
+      ],
+      "correct": 1,
+      "explanation": "Maxsus signalli transport vositalari so'zsiz ustunlikka ega."
+    },
+    {
+      "id": "18",
+      "category": "Burilish",
+      "question": "Burilishdan oldin haydovchi qanday harakat qilishi kerak?",
+      "options": [
+        "Oldindan burilish ko'rsatkichini yoqish",
+        "Faqat burilish paytida signal berish",
+        "Ovoz signali berish",
+        "Hech qanday signal bermaslik"
+      ],
+      "correct": 1,
+      "explanation": "Burilish ko'rsatkichi manyovrdan oldin yoqilib, boshqalarni ogohlantiradi."
+    },
+    {
+      "id": "19",
+      "category": "Piyodalar",
+      "question": "Maktab yaqinidagi yo'l qismida haydovchi nimaga alohida e'tibor berishi kerak?",
+      "options": [
+        "Bolalarning to'satdan yo'lga chiqishiga",
+        "Yo'l qoplamasi rangiga",
+        "Atrofdagi binolarga",
+        "Reklama taxtalariga"
+      ],
+      "correct": 1,
+      "explanation": "Bolalar yo'l harakatida eng himoyasiz qatnashchilar hisoblanadi."
+    },
+    {
+      "id": "20",
+      "category": "Umumiy qoidalar",
+      "question": "Transport vositasini boshqarish paytida qo'lda telefondan foydalanish qanday baholanadi?",
+      "options": [
+        "Taqiqlanadi",
+        "Ruxsat etiladi",
+        "Faqat shaharda ruxsat etiladi",
+        "Faqat past tezlikda ruxsat etiladi"
+      ],
+      "correct": 1,
+      "explanation": "Qo'lda telefondan foydalanish diqqatni chalg'itadi va taqiqlanadi."
+    }
+  ]
+}
