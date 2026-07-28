@@ -1,0 +1,88 @@
+# =============================================================================
+# Turon Avto Test | UZ
+#
+#   cp .env.example .env   # then fill in BOT_TOKEN and ADMIN_IDS
+#   docker compose up -d
+#
+# That is the whole deployment. Migrations run automatically on start.
+# =============================================================================
+
+name: turon-avto-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: turon_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-turon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-turon}
+      POSTGRES_DB: ${POSTGRES_DB:-turon_avto}
+      # Speeds up index-heavy queries and makes collation deterministic across
+      # host locales, so ORDER BY behaves identically everywhere.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # The bot waits on this before running migrations.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-turon} -d ${POSTGRES_DB:-turon_avto}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - turon_net
+    # Not published to the host: only the bot needs to reach it. Uncomment to
+    # connect a local SQL client.
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: turon-avto-test-bot:latest
+    container_name: turon_bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override the .env host: inside the compose network the database is
+      # reachable as `postgres`, not localhost.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-turon}:${POSTGRES_PASSWORD:-turon}@postgres:5432/${POSTGRES_DB:-turon_avto}
+      TZ: ${TIMEZONE:-Asia/Tashkent}
+    volumes:
+      # Named volumes so images, logs and backups survive a rebuild.
+      - media_data:/app/media
+      - logs_data:/app/logs
+      - backups_data:/app/backups
+      # Bind mount: drop question files here from the host and import them from
+      # the admin panel without rebuilding the image.
+      - ./data:/app/data
+    networks:
+      - turon_net
+    logging:
+      driver: json-file
+      options:
+        # Container logs are a duplicate of logs/app.log; cap them so they cannot
+        # fill the disk on a small VPS.
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+  media_data:
+    driver: local
+  logs_data:
+    driver: local
+  backups_data:
+    driver: local
+
+networks:
+  turon_net:
+    driver: bridge
