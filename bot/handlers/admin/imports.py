@@ -21,10 +21,11 @@ from bot.sources.base import QuestionSource, SourceError
 from bot.sources.registry import (
     DATA_DIR,
     SUPPORTED_EXTENSIONS,
+    WEB_SOURCES,
     build_source,
+    build_web_source,
     discover_data_files,
 )
-from bot.sources.web_sources import EAvtomaktabSource
 from bot.states import ImportStates
 from bot.utils.logging import get_logger
 from bot.utils.text import escape_html
@@ -60,7 +61,11 @@ async def show_import(
     await safe_edit(
         callback,
         f"{t('import.title', lang)}\n\n{body}",
-        reply_markup=import_keyboard(lang, [path.name for path in files]),
+        reply_markup=import_keyboard(
+            lang,
+            [path.name for path in files],
+            [(key, label) for key, (label, _) in WEB_SOURCES.items()],
+        ),
     )
 
 
@@ -86,22 +91,24 @@ async def import_from_disk(
     await _run_import(callback, session, import_service, lambda: build_source(chosen), lang)
 
 
-@router.callback_query(F.data == CB.IMPORT_WEB)
+@router.callback_query(F.data.startswith(f"{CB.IMPORT_WEB}:"))
 async def import_from_website(
     callback: CallbackQuery,
     session: AsyncSession,
     import_service: ImportService,
     lang: str = "uz",
 ) -> None:
-    """Scrape e-avtomaktab.uz and import what it offers."""
+    """Import from the chosen website."""
     await answer_callback(callback)
 
+    key = (callback.data or "").rsplit(":", 1)[-1]
     content_language = await SettingsRepository(session).content_language()
+
     await _run_import(
         callback,
         session,
         import_service,
-        lambda: EAvtomaktabSource(language=content_language),
+        lambda: build_web_source(key, language=content_language),
         lang,
         running_key="import.running_web",
     )

@@ -275,3 +275,214 @@ class EAvtomaktabSource(QuestionSource):
             requests_made,
             skipped,
         )
+
+
+# --- avtotestu.uz -------------------------------------------------------------
+#: Base for the static ticket files. The site is a single-page app that fetches
+#: ``/data/variants/v{n}.json`` for each of its published tickets, so those files
+#: *are* the question bank — no browser, no rendering, no scraping heuristics.
+AVTOTESTU_BASE = "https://www.avtotestu.uz"
+AVTOTESTU_VARIANT_URL = AVTOTESTU_BASE + "/data/variants/v{number}.json"
+AVTOTESTU_IMAGE_BASE = AVTOTESTU_BASE + "/images/"
+
+#: Highest ticket published. Requesting beyond it returns the app's index.html
+#: with a 200, so the walk stops on content rather than on status code.
+AVTOTESTU_MAX_VARIANT = 63
+
+#: Bot language to the key used inside ``content`` and ``izoh``.
+_AVTOTESTU_LANGUAGE_KEYS = {
+    "uz": "uz_lat",
+    "ru": "ru",
+}
+
+
+class AvtotestuSource(QuestionSource):
+    """Questions from avtotestu.uz's published ticket files.
+
+    Each ticket is a JSON array of question objects carrying text and options in
+    three languages, an ``is_correct`` flag, a media filename and — uniquely
+    among these sources — a written explanation, which becomes the quiz poll's
+    explanation text.
+    """
+
+    def __init__(
+        self,
+        *,
+        language: str = "uz",
+        max_variant: int = AVTOTESTU_MAX_VARIANT,
+        request_delay: float = 0.3,
+        timeout: float = 30.0,
+        strict: bool = False,
+    ) -> None:
+        """Configure the reader.
+
+        Args:
+            language: ``uz`` or ``ru``.
+            max_variant: Highest ticket number to try.
+            request_delay: Seconds between ticket requests.
+            timeout: Per-request timeout in seconds.
+            strict: Abort on the first unusable record instead of skipping it.
+        """
+        if language not in _AVTOTESTU_LANGUAGE_KEYS:
+            raise SourceError(
+                f"Unsupported language {language!r}; "
+                f"expected one of {sorted(_AVTOTESTU_LANGUAGE_KEYS)}"
+            )
+
+        self.language = language
+        self.max_variant = max_variant
+        self.request_delay = request_delay
+        self.timeout = timeout
+        self.strict = strict
+        self.name = f"avtotestu-{language}"
+
+    async def count_estimate(self) -> int | None:
+        """Twenty questions per ticket, give or take a short final one."""
+        return self.max_variant * 20
+
+    def _to_record(self, entry: dict[str, Any]) -> dict[str, Any] | None:
+        """Convert one ticket entry into a record ``parse_record`` understands.
+
+        Returns:
+            The record, or ``None`` when the entry cannot make a usable quiz.
+        """
+        key = _AVTOTESTU_LANGUAGE_KEYS[self.language]
+        content = (entry.get("content") or {}).get(key) or {}
+
+        text = str(content.get("text") or "").strip()
+        if not text:
+            return None
+
+        options: list[str] = []
+        correct_index: int | None = None
+        for option in content.get("options") or []:
+            label = str(option.get("text") or "").strip()
+            if not label:
+                continue
+            if option.get("is_correct") and correct_index is None:
+                correct_index = len(options)
+            options.append(label)
+
+        if correct_index is None or not MIN_OPTIONS <= len(options) <= MAX_OPTIONS:
+            return None
+
+        info = entry.get("task_info") or {}
+        identifier = str(info.get("global_id") or "").strip()
+        if not identifier:
+            return None
+
+        media = str(entry.get("media_url") or "").strip()
+        image_url = AVTOTESTU_IMAGE_BASE + media.lstrip("/") if media else None
+
+        explanation = None
+        izoh = entry.get("izoh")
+        if isinstance(izoh, dict):
+            explanation = str(izoh.get(key) or "").strip() or None
+        elif isinstance(izoh, str):
+            explanation = izoh.strip() or None
+
+        ticket = info.get("ticket_num")
+        original = f"{AVTOTESTU_BASE}/savol/variant-{ticket}" if ticket else AVTOTESTU_BASE
+
+        return {
+            "external_id": identifier,
+            "text": text,
+            "options": options,
+            "correct_index": correct_index,
+            "explanation": explanation,
+            "image_url": image_url,
+            "original_url": original,
+            "language": self.language,
+            "category": f"Bilet {ticket}" if ticket else None,
+        }
+
+    async def _fetch_variant(
+        self, session: aiohttp.ClientSession, number: int
+    ) -> list[dict[str, Any]] | None:
+        """Fetch one ticket file.
+
+        Returns:
+            Its entries, or ``None`` when that ticket does not exist. A missing
+            ticket answers 200 with the app's HTML shell rather than a 404, so
+            the body is what decides.
+        """
+        url = AVTOTESTU_VARIANT_URL.format(number=number)
+        async with session.get(url) as response:
+            if response.status != 200:
+                return None
+            body = await response.text()
+
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+
+        return payload if isinstance(payload, list) else None
+
+    async def fetch(self) -> AsyncIterator[RawQuestion]:  # type: ignore[override]
+        """Yield every question across every published ticket.
+
+        Raises:
+            SourceError: The first ticket could not be read, which means the site
+                or its layout has changed rather than that one file is missing.
+        """
+        seen: set[str] = set()
+        skipped = 0
+        tickets = 0
+
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        headers = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
+
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            for number in range(1, self.max_variant + 1):
+                if number > 1:
+                    await asyncio.sleep(self.request_delay)
+
+                try:
+                    entries = await self._fetch_variant(session, number)
+                except aiohttp.ClientError as exc:
+                    if number == 1:
+                        raise SourceError(f"Could not reach avtotestu.uz: {exc}") from exc
+                    logger.warning("Ticket %d failed (%s); continuing", number, exc)
+                    continue
+
+                if entries is None:
+                    if number == 1:
+                        raise SourceError(
+                            "avtotestu.uz did not return ticket data. "
+                            "The site layout has probably changed."
+                        )
+                    logger.debug("Ticket %d is not published; skipping", number)
+                    continue
+
+                tickets += 1
+
+                for entry in entries:
+                    record = self._to_record(entry)
+                    if record is None:
+                        skipped += 1
+                        continue
+
+                    identifier = str(record["external_id"])
+                    if identifier in seen:
+                        continue
+                    seen.add(identifier)
+
+                    try:
+                        yield parse_record(
+                            record,
+                            location=f"avtotestu {identifier}",
+                            default_language=self.language,
+                        )
+                    except QuestionValidationError as exc:
+                        if self.strict:
+                            raise
+                        skipped += 1
+                        logger.debug("Skipped %s: %s", identifier, exc)
+
+        logger.info(
+            "avtotestu: %d question(s) across %d ticket(s), %d skipped",
+            len(seen),
+            tickets,
+            skipped,
+        )

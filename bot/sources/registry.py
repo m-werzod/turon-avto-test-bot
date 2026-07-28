@@ -16,6 +16,7 @@ from bot.sources.file_sources import (
     JsonQuestionSource,
     XlsxQuestionSource,
 )
+from bot.sources.web_sources import AvtotestuSource, EAvtomaktabSource
 from bot.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,3 +88,33 @@ def discover_data_files(directory: Path | None = None) -> list[Path]:
         if candidate.is_file() and candidate.suffix.lower() in _READERS
     ]
     return sorted(files, key=lambda item: item.stat().st_mtime, reverse=True)
+
+
+#: Web sources offered in the admin panel, keyed by the token that travels in the
+#: callback data. Keys are short because Telegram caps callback data at 64 bytes,
+#: and permanent because a question's stored ``source`` is built from the source
+#: name — renaming one would orphan its whole bank and re-import it as duplicates.
+WEB_SOURCES: dict[str, tuple[str, type[QuestionSource]]] = {
+    "at": ("avtotestu.uz", AvtotestuSource),
+    "eam": ("e-avtomaktab.uz", EAvtomaktabSource),
+}
+
+
+def build_web_source(key: str, *, language: str = "uz") -> QuestionSource:
+    """Construct a web source by its callback token.
+
+    Args:
+        key: Token from :data:`WEB_SOURCES`.
+        language: Question language to import.
+
+    Returns:
+        A ready-to-use source.
+
+    Raises:
+        SourceError: The token is unknown.
+    """
+    entry = WEB_SOURCES.get(key)
+    if entry is None:
+        raise SourceError(f"Unknown web source {key!r}")
+    _, factory = entry
+    return factory(language=language)  # type: ignore[call-arg]

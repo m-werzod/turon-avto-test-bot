@@ -7,6 +7,8 @@ silently does nothing.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -57,7 +59,7 @@ class CB:
     IMPORT = "im"
     IMPORT_FILE = "im:file"  # + ":<index>"
     IMPORT_UPLOAD = "im:up"
-    IMPORT_WEB = "im:web"
+    IMPORT_WEB = "im:web"  # + ":<source key>"
 
     # Backup / logs / settings
     BACKUP = "bk"
@@ -202,7 +204,9 @@ def stats_keyboard(language: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def import_keyboard(language: str, files: list[str]) -> InlineKeyboardMarkup:
+def import_keyboard(
+    language: str, files: list[str], web_sources: Sequence[tuple[str, str]] = ()
+) -> InlineKeyboardMarkup:
     """Import sources: discovered files plus an upload option.
 
     Buttons carry a list index rather than a filename — a path would blow past
@@ -211,7 +215,11 @@ def import_keyboard(language: str, files: list[str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for index, name in enumerate(files[:10]):
         builder.button(text=f"📄 {name}"[:60], callback_data=f"{CB.IMPORT_FILE}:{index}")
-    builder.button(text=t("import.source_web", language), callback_data=CB.IMPORT_WEB)
+    for key, label in web_sources:
+        builder.button(
+            text=t("import.source_web", language, site=label),
+            callback_data=f"{CB.IMPORT_WEB}:{key}",
+        )
     builder.button(text=t("import.source_upload", language), callback_data=CB.IMPORT_UPLOAD)
     builder.button(text=t("common.back", language), callback_data=CB.MENU)
     builder.adjust(1)
