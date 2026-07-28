@@ -320,9 +320,7 @@ class TestSingleMessageDelivery:
         assert len(bot.polls) == 1, "expected a single poll message"
         assert bot.photos == [], "the photo must not be sent as its own message"
 
-    async def test_the_image_travels_on_the_poll(
-        self, session: AsyncSession, quiz_service
-    ) -> None:
+    async def test_the_image_travels_on_the_poll(self, session: AsyncSession, quiz_service) -> None:
         service, bot = quiz_service
         await self._add_channel(session, -402)
         await self._question_with_image(session, service.media)
