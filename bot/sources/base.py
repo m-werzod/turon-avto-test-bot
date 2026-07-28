@@ -107,8 +107,13 @@ class QuestionSource(abc.ABC):
     #: idempotent, so changing it creates duplicates — treat it as permanent.
     name: str
 
+    # Declared as a plain `def` returning an AsyncIterator, not `async def`.
+    # Implementations are async generators, and calling one returns the iterator
+    # directly rather than a coroutine yielding it — so `async for q in
+    # source.fetch()` is correct. Marking this `async` here would type the call
+    # as a coroutine and make every `async for` over it wrong.
     @abc.abstractmethod
-    async def fetch(self) -> AsyncIterator[RawQuestion]:
+    def fetch(self) -> AsyncIterator[RawQuestion]:
         """Yield every question this source offers.
 
         Raises:

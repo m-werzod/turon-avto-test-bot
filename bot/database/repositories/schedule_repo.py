@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import time
+from typing import Any, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import CursorResult, delete, select
 
 from bot.database.models.schedule import ScheduleSlot
 from bot.database.repositories.base import BaseRepository
@@ -83,8 +84,9 @@ class ScheduleRepository(BaseRepository[ScheduleSlot]):
         Returns:
             Whether a slot was actually removed.
         """
-        result = await self.session.execute(
-            delete(ScheduleSlot).where(ScheduleSlot.run_at == run_at)
+        result = cast(
+            "CursorResult[Any]",
+            await self.session.execute(delete(ScheduleSlot).where(ScheduleSlot.run_at == run_at)),
         )
         await self.session.flush()
         return bool(result.rowcount)

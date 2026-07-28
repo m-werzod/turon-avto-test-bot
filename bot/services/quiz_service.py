@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import (
@@ -146,14 +147,14 @@ class QuizService:
         return truncate(caption, CAPTION_LIMIT)
 
     @staticmethod
-    def build_poll_payload(question: Question) -> dict[str, object]:
+    def build_poll_payload(question: Question) -> dict[str, Any]:
         """Assemble the ``sendPoll`` arguments for a quiz.
 
         Every field is re-clamped here even though the importer already did so:
         this is the last point before the API call, and an over-long value is
         rejected outright, costing a scheduled post.
         """
-        payload: dict[str, object] = {
+        payload: dict[str, Any] = {
             "question": normalize_for_poll(question.text, POLL_QUESTION_LIMIT),
             "options": [normalize_for_poll(option, 100) for option in question.options],
             "type": "quiz",
@@ -300,7 +301,8 @@ class QuizService:
         if not channels:
             raise NoChannelsError("No active channels are connected")
 
-        language = await settings_repo.content_language()
+        # Widens to None on the fallback path below, meaning "any language".
+        language: str | None = await settings_repo.content_language()
         total_active = await question_repo.count_active(language)
         if total_active == 0:
             # Fall back to any language rather than refusing to post, so a bank

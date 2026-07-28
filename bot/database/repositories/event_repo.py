@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import CursorResult, delete, select
 
 from bot.database.models.event_log import EventLog
 from bot.database.repositories.base import BaseRepository
@@ -60,6 +60,9 @@ class EventRepository(BaseRepository[EventLog]):
             Number of rows deleted.
         """
         cutoff = datetime.now(UTC) - timedelta(days=days)
-        result = await self.session.execute(delete(EventLog).where(EventLog.created_at < cutoff))
+        result = cast(
+            "CursorResult[Any]",
+            await self.session.execute(delete(EventLog).where(EventLog.created_at < cutoff)),
+        )
         await self.session.flush()
         return int(result.rowcount or 0)

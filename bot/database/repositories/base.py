@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.base import Base
@@ -58,7 +58,7 @@ class BaseRepository[ModelT: Base]:
             Number of rows removed: 1 if it existed, 0 otherwise.
         """
         stmt = delete(self.model).where(self.model.id == pk)  # type: ignore[attr-defined]
-        result = await self.session.execute(stmt)
+        result = cast("CursorResult[Any]", await self.session.execute(stmt))
         await self.session.flush()
         return int(result.rowcount or 0)
 

@@ -83,4 +83,4 @@ class UserRepository(BaseRepository[BotUser]):
         """User counts grouped by interface language."""
         stmt = select(BotUser.language, func.count()).group_by(BotUser.language)
         result = await self.session.execute(stmt)
-        return dict(result.all())
+        return {language: count for language, count in result.all()}  # noqa: C416

@@ -31,6 +31,16 @@ async def safe_edit(
     if callback.message is None:
         return None
 
+    # A callback attached to a message older than 48 hours arrives as an
+    # InaccessibleMessage, which is not a Message subclass and has no edit_text.
+    # Calling it would raise AttributeError, so answer with a fresh message
+    # instead — the admin still gets a reply.
+    if not isinstance(callback.message, Message):
+        logger.debug("Callback message is inaccessible; sending a new message instead")
+        return await callback.message.answer(
+            text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+
     try:
         result = await callback.message.edit_text(
             text=text, reply_markup=reply_markup, parse_mode=parse_mode
