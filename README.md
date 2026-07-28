@@ -165,6 +165,60 @@ message rather than failing at the first scheduled post.
 
 ---
 
+## Quick start (no Docker)
+
+If Docker is not installed, the bot runs on SQLite with nothing else to set up —
+the database is a single file. Adequate for one bot posting a few times a day.
+
+```bash
+python -m venv .venv && .venv\Scripts\activate
+```
+
+```bash
+pip install -e ".[sqlite]"
+```
+
+Set `DATABASE_URL=sqlite+aiosqlite:///./turon.db` in `.env`, then:
+
+```bash
+alembic upgrade head
+```
+
+```bash
+python scripts/doctor.py
+```
+
+`doctor` checks configuration, Telegram auth, the database, and the four things
+that make a *running* bot post nothing — empty bank, no channel, no schedule,
+scheduler paused — printing the fix for each. Run it whenever something is off.
+
+```bash
+python -m bot
+```
+
+Switch to PostgreSQL later by changing one line in `.env`; nothing else differs.
+
+---
+
+## Bot branding
+
+Set the profile photo, name, descriptions and command menu in one go. Save your
+logo to `assets/logo.png`, then:
+
+```bash
+python scripts/setup_bot_profile.py
+```
+
+The script squares and re-encodes the image for you, so any square-ish PNG or
+JPEG works. It is idempotent — re-run it after changing the logo.
+
+> Most guides say a bot's avatar can only be set by hand via @BotFather
+> `/setuserpic`. That is out of date: `setMyProfilePhoto` exists in the Bot API
+> and is what this script uses. If your Telegram library predates it, the
+> @BotFather route still works as a fallback.
+
+---
+
 ## Running locally
 
 Python 3.12+ required.
