@@ -6,7 +6,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help install dev test test-cov lint format typecheck check \
-        migrate migration downgrade run \
+        migrate migration downgrade run doctor brand \
         up down restart logs shell psql build clean backup
 
 PYTHON  ?= python
@@ -71,6 +71,12 @@ downgrade: ## Roll back one migration
 
 run: ## Run the bot locally
 	$(BIN)/python -m bot
+
+doctor: ## Pre-flight check: config, Telegram, database, readiness
+	$(BIN)/python scripts/doctor.py
+
+brand: ## Apply logo, name, descriptions and command menu to the bot
+	$(BIN)/python scripts/setup_bot_profile.py --photo assets/logo.png
 
 # --- Docker -------------------------------------------------------------------
 
