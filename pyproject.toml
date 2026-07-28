@@ -26,6 +26,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Run without PostgreSQL. Fine for a single-process bot posting a few times a
+# day; PostgreSQL is still what Docker Compose provisions and what production
+# should use.
+sqlite = ["aiosqlite>=0.20"]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

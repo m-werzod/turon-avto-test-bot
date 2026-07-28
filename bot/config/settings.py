@@ -152,6 +152,45 @@ class Settings(BaseSettings):
             path.mkdir(parents=True, exist_ok=True)
 
 
+def database_url_only() -> str:
+    """Resolve ``DATABASE_URL`` without validating anything else.
+
+    Migrations need the DSN and nothing more. Building the full :class:`Settings`
+    would also demand a valid ``BOT_TOKEN``, which would make
+    ``alembic upgrade head`` fail during first-time setup and in any CI or
+    maintenance context where no Telegram credentials exist — coupling that has
+    no reason to be there.
+
+    Precedence matches pydantic-settings: a real environment variable wins over
+    the ``.env`` file.
+
+    Returns:
+        The configured DSN.
+
+    Raises:
+        RuntimeError: No DSN could be found in either place.
+    """
+    import os
+
+    if from_environ := os.environ.get("DATABASE_URL", "").strip():
+        return from_environ
+
+    env_file = PROJECT_ROOT / ".env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, _, value = stripped.partition("=")
+            if key.strip() == "DATABASE_URL" and value.strip():
+                return value.strip()
+
+    raise RuntimeError(
+        "DATABASE_URL is not set. Add it to .env or export it, e.g.\n"
+        "  DATABASE_URL=sqlite+aiosqlite:///./turon.db"
+    )
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return the process-wide settings singleton.

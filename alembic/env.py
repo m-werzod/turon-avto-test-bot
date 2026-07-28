@@ -10,7 +10,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from bot.config import get_settings
+from bot.config.settings import database_url_only
 
 # Importing the models package registers every table on Base.metadata.
 # Without this import autogenerate would see an empty schema.
@@ -26,8 +26,13 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    """Resolve the DSN from the environment rather than alembic.ini."""
-    return get_settings().database_url
+    """Resolve the DSN from the environment rather than alembic.ini.
+
+    Deliberately reads only DATABASE_URL. Migrations must not require a valid
+    BOT_TOKEN — that would break first-time setup, CI and maintenance runs where
+    no Telegram credentials exist.
+    """
+    return database_url_only()
 
 
 def run_migrations_offline() -> None:
