@@ -243,81 +243,115 @@ async def check_readiness(settings: Settings) -> None:
     """Content, channels and schedule — why a running bot posts nothing."""
     print("\nReadiness to post")
     from bot.database.repositories import (
-        ChannelRepository,
-        CycleRepository,
         QuestionRepository,
-        ScheduleRepository,
-        SettingsRepository,
     )
     from bot.database.session import Database
 
     database = Database(settings.database_url)
     try:
         async with database.session() as session:
+            # --- shared by every user -----------------------------------------
             total = await QuestionRepository(session).count_active()
             if total == 0:
                 report(
                     FAIL,
                     "question bank",
                     "empty",
-                    'admin panel -> "Testlarni yangilash" -> import a file\n'
+                    'panel -> "Testlarni yangilash" (operator only)\n'
                     "a 20-question sample ships in data/sample_questions.json",
                 )
             else:
                 with_images = await QuestionRepository(session).count_with_images()
                 report(OK, "question bank", f"{total} active ({with_images} with images)")
 
-            channels = await ChannelRepository(session).list_active()
-            if not channels:
-                report(
-                    FAIL,
-                    "channels",
-                    "none connected",
-                    'admin panel -> "Kanalni ulash"\n'
-                    "add the bot to your channel as an administrator with Post messages first",
-                )
-            else:
-                report(
-                    OK,
-                    "channels",
-                    ", ".join(channel.display_name for channel in channels),
-                )
-
-            slots = await ScheduleRepository(session).list_enabled()
-            if not slots:
+            # --- per user ------------------------------------------------------
+            owners = await _known_owners(session)
+            if not owners:
                 report(
                     WARN,
-                    "schedule",
-                    "no posting times set",
-                    'admin panel -> "Jadval" -> choose 1-3 times',
+                    "users",
+                    "nobody has connected a channel yet",
+                    "open the bot in Telegram and press /start",
                 )
-            else:
-                report(
-                    OK,
-                    "schedule",
-                    f"{', '.join(slot.label for slot in slots)} ({settings.timezone_name})",
-                )
+                return
 
-            paused = await SettingsRepository(session).is_scheduler_paused()
-            if paused:
-                report(
-                    WARN,
-                    "scheduler",
-                    "PAUSED — nothing will post automatically",
-                    'admin panel -> "Davom ettirish" to resume',
-                )
-            else:
-                report(OK, "scheduler", "running")
+            report(OK, "users", f"{len(owners)} with a channel or a schedule")
 
-            cycle = await CycleRepository(session).get_open_cycle()
-            if cycle is not None:
-                used = await CycleRepository(session).count_posts_in_cycle(cycle.id)
-                left = await CycleRepository(session).count_remaining(cycle.id)
-                report(OK, "current cycle", f"#{cycle.number} — {used} posted, {left} remaining")
+            for owner_id in owners:
+                await _report_owner(session, owner_id, settings)
+
     except Exception as exc:  # noqa: BLE001 - covered by the database check above
         report(WARN, "readiness", f"could not read state: {str(exc)[:120]}")
     finally:
         await database.dispose()
+
+
+async def _known_owners(session: object) -> list[int]:
+    """Everyone who has connected a channel or set a schedule.
+
+    Deliberately spans owners: the doctor's job is to describe the whole
+    installation, which is the one place a cross-tenant read is the point rather
+    than a leak.
+    """
+    from sqlalchemy import select
+
+    from bot.database.models.channel import Channel
+    from bot.database.models.schedule import ScheduleSlot
+
+    found: set[int] = set()
+    for column in (Channel.owner_id, ScheduleSlot.owner_id):
+        result = await session.scalars(select(column).distinct())  # type: ignore[attr-defined]
+        found.update(result)
+    return sorted(found)
+
+
+async def _report_owner(session: object, owner_id: int, settings: Settings) -> None:
+    """Print one user's readiness to post."""
+    from bot.database.repositories import (
+        ChannelRepository,
+        CycleRepository,
+        ScheduleRepository,
+        SettingsRepository,
+    )
+
+    channels = await ChannelRepository(session, owner_id).list_active()  # type: ignore[arg-type]
+    slots = await ScheduleRepository(session, owner_id).list_enabled()  # type: ignore[arg-type]
+    paused = await SettingsRepository(session, owner_id).is_scheduler_paused()  # type: ignore[arg-type]
+    per_send = await SettingsRepository(session, owner_id).questions_per_send()  # type: ignore[arg-type]
+
+    print(f"\n  user {owner_id}")
+
+    if channels:
+        report(OK, "  channels", ", ".join(channel.display_name for channel in channels))
+    else:
+        report(
+            WARN,
+            "  channels",
+            "none connected",
+            'panel -> "Kanalni ulash"; add the bot to the channel as administrator first',
+        )
+
+    if slots:
+        times = ", ".join(slot.label for slot in slots)
+        report(
+            OK,
+            "  schedule",
+            f"{times} ({settings.timezone_name}), {per_send} question(s) each",
+        )
+    else:
+        report(WARN, "  schedule", "no posting times set", 'panel -> "Jadval"')
+
+    if paused:
+        report(WARN, "  scheduler", "PAUSED for this user", 'panel -> "Davom ettirish"')
+    else:
+        report(OK, "  scheduler", "running")
+
+    cycle = await CycleRepository(session, owner_id).get_open_cycle()  # type: ignore[arg-type]
+    if cycle is not None:
+        cycles = CycleRepository(session, owner_id)  # type: ignore[arg-type]
+        used = await cycles.count_posts_in_cycle(cycle.id)
+        left = await cycles.count_remaining(cycle.id)
+        report(OK, "  cycle", f"#{cycle.number} — {used} posted, {left} remaining")
 
 
 async def main() -> int:

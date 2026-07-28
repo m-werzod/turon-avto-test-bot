@@ -458,6 +458,16 @@ Two consequences worth knowing:
 
 ## Deployment
 
+**Keeping it running permanently:** see [deploy/README.md](deploy/README.md).
+It compares the four options honestly — a Windows Scheduled Task (free, one
+command, but stops when the PC sleeps), a VPS with Docker or systemd, and the
+managed platforms — and ships the unit file and installer for each.
+
+The short version: the scheduler only fires while the process is alive, and a
+desktop is not a server. If a 07:00 post matters, run it somewhere that is awake
+at 07:00.
+
+
 Any host that runs Docker works — Ubuntu VPS, Hetzner, DigitalOcean, Hostinger,
 Railway, Render.
 

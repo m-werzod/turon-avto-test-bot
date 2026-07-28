@@ -1,0 +1,60 @@
+# systemd unit for a Linux VPS — the deployment that actually runs forever.
+#
+#   sudo cp deploy/turon-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now turon-bot
+#
+# Adjust User and the two paths if you did not follow deploy/README.md exactly.
+
+[Unit]
+Description=Turon Avto Test bot
+Documentation=https://github.com/m-werzod/turon-avto-test-bot
+# Posting needs the network, and the database may be local PostgreSQL.
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=turon
+Group=turon
+WorkingDirectory=/opt/turon-avto-test-bot
+
+# Config lives in the file, not in this unit: a token in a systemd unit ends up
+# in `systemctl cat` output and in any config backup.
+EnvironmentFile=/opt/turon-avto-test-bot/.env
+
+# -u keeps stdout unbuffered so `journalctl -f` shows lines as they happen
+# instead of in delayed blocks.
+ExecStart=/opt/turon-avto-test-bot/.venv/bin/python -u -m bot
+
+# Restart on any exit, including a clean one: the bot has no reason to stop, so
+# stopping is itself the fault condition.
+Restart=always
+RestartSec=10
+
+# Give up only if it fails five times in a minute — that is a broken deployment,
+# not a transient fault, and a tight crash loop should not spin forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Long enough for the scheduler and database pool to close cleanly.
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+# --- hardening ---------------------------------------------------------------
+# The bot reads its config, writes logs, media and backups, and talks to
+# Telegram. It needs nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/turon-avto-test-bot/logs /opt/turon-avto-test-bot/media /opt/turon-avto-test-bot/backups
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
