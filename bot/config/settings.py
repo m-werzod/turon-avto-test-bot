@@ -181,10 +181,31 @@ def load_settings_or_exit() -> Settings:
         )
         raise SystemExit(2) from exc
 
-    if not settings.admin_ids:
+    # admin_ids is a lazily-evaluated property, so a malformed value raises here
+    # rather than during Settings() above and would otherwise escape as a raw
+    # traceback — the exact thing this function exists to prevent.
+    try:
+        admin_ids = settings.admin_ids
+    except ValueError as exc:
+        print("Configuration error — the bot cannot start:\n", file=sys.stderr)
+        print(f"  * ADMIN_IDS: {exc}", file=sys.stderr)
         print(
-            "Configuration error — ADMIN_IDS is empty, nobody could open the "
-            "admin panel. Set ADMIN_IDS in .env to your Telegram user id.",
+            "\nADMIN_IDS must be your numeric Telegram user id, not your @username.\n"
+            "Message @userinfobot to get it, then set e.g. ADMIN_IDS=123456789\n"
+            "(comma-separated for several admins).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from exc
+
+    if not admin_ids:
+        print("Configuration error — the bot cannot start:\n", file=sys.stderr)
+        print(
+            "  * ADMIN_IDS: empty, so nobody could open the admin panel.",
+            file=sys.stderr,
+        )
+        print(
+            "\nMessage @userinfobot to get your numeric Telegram id, then set\n"
+            "ADMIN_IDS=123456789 in .env",
             file=sys.stderr,
         )
         raise SystemExit(2)
