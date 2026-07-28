@@ -252,10 +252,12 @@ class TestUsers:
 
     async def test_touch_creates_then_updates(self, session: AsyncSession) -> None:
         repo = UserRepository(session)
-        user = await repo.touch(telegram_id=7, username="old", first_name="A")
+        user, created = await repo.touch(telegram_id=7, username="old", first_name="A")
+        assert created is True
         assert user.username == "old"
 
-        again = await repo.touch(telegram_id=7, username="new", first_name="A")
+        again, created_again = await repo.touch(telegram_id=7, username="new", first_name="A")
+        assert created_again is False
         assert again.id == user.id
         assert again.username == "new"
 
@@ -312,3 +314,41 @@ class TestEventLog:
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
         assert created_at <= datetime.now(UTC)
+
+
+class TestNewUserTimestamps:
+    """Regression: reading a server-default column right after INSERT.
+
+    ``created_at`` / ``updated_at`` carry ``server_default=func.now()``, so the
+    ORM has no value for them until a round-trip fetches one. Under asyncio that
+    refresh is synchronous IO and raises MissingGreenlet, which crashed every
+    brand-new user's first /start.
+    """
+
+    async def test_timestamps_readable_after_creation(self, session: AsyncSession) -> None:
+        repo = UserRepository(session)
+
+        user, _ = await repo.touch(telegram_id=999001, first_name="New")
+
+        assert user.created_at is not None
+        assert user.updated_at is not None
+
+    async def test_timestamps_readable_after_a_returning_user_is_touched(
+        self, session: AsyncSession
+    ) -> None:
+        """The real failure: ``onupdate`` expires ``updated_at`` on every UPDATE.
+
+        An INSERT populates both timestamps through RETURNING, so a first-time
+        user is fine. The second touch emits an UPDATE, and ``updated_at`` is
+        left expired because only the database knows its new value — so the next
+        read of it attempts synchronous IO.
+        """
+        repo = UserRepository(session)
+        await repo.touch(telegram_id=999002, first_name="Seen")
+
+        user, _ = await repo.touch(telegram_id=999002, first_name="Seen again")
+
+        # The access itself is the assertion: before the fix this raised
+        # sqlalchemy.exc.MissingGreenlet rather than returning a value.
+        assert user.created_at is not None
+        assert user.updated_at is not None

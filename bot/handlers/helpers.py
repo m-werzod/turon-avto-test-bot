@@ -61,6 +61,23 @@ async def safe_edit(
     return result if isinstance(result, Message) else None
 
 
+async def safe_delete(callback: CallbackQuery) -> None:
+    """Delete the message behind a callback, tolerating every ordinary refusal.
+
+    Deletion is best-effort by nature: the message may already be gone, be older
+    than the 48-hour window, or sit in a chat where the bot lacks the right. None
+    of those should surface to the user, who is about to receive a replacement
+    message regardless.
+    """
+    if callback.message is None or not isinstance(callback.message, Message):
+        return
+
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest as exc:
+        logger.debug("Could not delete message: %s", exc)
+
+
 async def answer_callback(callback: CallbackQuery, text: str = "", *, alert: bool = False) -> None:
     """Acknowledge a callback, ignoring an expired query.
 

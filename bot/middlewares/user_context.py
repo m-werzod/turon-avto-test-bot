@@ -50,7 +50,7 @@ class UserContextMiddleware(BaseMiddleware):
         is_admin = telegram_user.id in self.admin_ids
         users = UserRepository(session)
 
-        stored = await users.touch(
+        stored, is_new = await users.touch(
             telegram_id=telegram_user.id,
             username=telegram_user.username,
             first_name=telegram_user.first_name,
@@ -62,6 +62,7 @@ class UserContextMiddleware(BaseMiddleware):
         )
 
         data["user"] = stored
+        data["is_new_user"] = is_new
         data["lang"] = translator.normalize(stored.language)
         data["is_admin"] = is_admin
 

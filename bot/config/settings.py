@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     default_language: LanguageCode = Field(alias="DEFAULT_LANGUAGE", default="uz")
     media_root_raw: str = Field(alias="MEDIA_ROOT", default="media/images")
     send_images_as_document: bool = Field(alias="SEND_IMAGES_AS_DOCUMENT", default=False)
+    brand_logo_raw: str = Field(alias="BRAND_LOGO", default="assets/logo.png")
 
     # --- Reliability ----------------------------------------------------------
     max_retries: int = Field(alias="MAX_RETRIES", default=3, ge=1, le=10)
@@ -131,6 +132,11 @@ class Settings(BaseSettings):
     @property
     def media_root(self) -> Path:
         return self._resolve(self.media_root_raw)
+
+    @property
+    def brand_logo(self) -> Path:
+        """Logo sent with the greeting. Absent is fine — greetings go out as text."""
+        return self._resolve(self.brand_logo_raw)
 
     @property
     def log_dir(self) -> Path:

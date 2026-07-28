@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models.user import BotUser
 from bot.database.repositories import SettingsRepository, UserRepository
-from bot.handlers.helpers import answer_callback, safe_edit
+from bot.handlers.helpers import answer_callback, safe_delete
 from bot.keyboards import CB, language_keyboard, main_menu_keyboard
 from bot.locales.i18n import LANGUAGE_LABELS, t, translator
+from bot.services.branding_service import BrandingService
 from bot.utils.logging import get_logger
 from bot.utils.text import escape_html
 
@@ -26,9 +27,11 @@ async def handle_start(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
+    branding: BrandingService,
     user: BotUser | None = None,
     lang: str = "uz",
     is_admin: bool = False,
+    is_new_user: bool = False,
 ) -> None:
     """Greet the user, offering the language picker on first contact.
 
@@ -39,22 +42,23 @@ async def handle_start(
     # Any half-finished flow is abandoned: /start is how a stuck admin recovers.
     await state.clear()
 
-    if user is None or user.created_at == user.updated_at:
+    if user is None or is_new_user:
         await message.answer(t("start.choose_language", lang), reply_markup=language_keyboard())
         return
 
-    await _send_greeting(message, session, lang, is_admin)
+    await _send_greeting(message, session, branding, lang, is_admin)
 
 
 @router.message(Command("help"))
 async def handle_help(
     message: Message,
     session: AsyncSession,
+    branding: BrandingService,
     lang: str = "uz",
     is_admin: bool = False,
 ) -> None:
     """Same greeting as ``/start``, without resetting the language."""
-    await _send_greeting(message, session, lang, is_admin)
+    await _send_greeting(message, session, branding, lang, is_admin)
 
 
 @router.message(Command("language"))
@@ -67,6 +71,7 @@ async def handle_language_command(message: Message, lang: str = "uz") -> None:
 async def handle_language_choice(
     callback: CallbackQuery,
     session: AsyncSession,
+    branding: BrandingService,
     is_admin: bool = False,
 ) -> None:
     """Persist the chosen interface language and greet in it."""
@@ -83,13 +88,17 @@ async def handle_language_choice(
     name = escape_html(callback.from_user.full_name if callback.from_user else "")
     if is_admin:
         paused = await SettingsRepository(session).is_scheduler_paused()
-        await safe_edit(
-            callback,
-            t("start.welcome_admin", language, name=name),
-            reply_markup=main_menu_keyboard(language, paused=paused),
-        )
+        caption = t("start.welcome_admin", language, name=name)
+        markup = main_menu_keyboard(language, paused=paused)
     else:
-        await safe_edit(callback, t("start.welcome_user", language, name=name))
+        caption = t("start.welcome_user", language, name=name)
+        markup = None
+
+    # The picker is a text message and the greeting carries a photo; Telegram
+    # cannot edit one into the other, so retire the picker and send afresh.
+    await safe_delete(callback)
+    if callback.message is not None:
+        await branding.send_welcome(session, callback.message.chat.id, caption, reply_markup=markup)
 
     logger.info(
         "User %s selected language %s",
@@ -99,16 +108,21 @@ async def handle_language_choice(
 
 
 async def _send_greeting(
-    message: Message, session: AsyncSession, language: str, is_admin: bool
+    message: Message,
+    session: AsyncSession,
+    branding: BrandingService,
+    language: str,
+    is_admin: bool,
 ) -> None:
-    """Send the greeting appropriate to the caller's role."""
+    """Send the logo and the greeting appropriate to the caller's role."""
     name = escape_html(message.from_user.full_name if message.from_user else "")
 
     if is_admin:
         paused = await SettingsRepository(session).is_scheduler_paused()
-        await message.answer(
-            t("start.welcome_admin", language, name=name),
-            reply_markup=main_menu_keyboard(language, paused=paused),
-        )
+        caption = t("start.welcome_admin", language, name=name)
+        markup = main_menu_keyboard(language, paused=paused)
     else:
-        await message.answer(t("start.welcome_user", language, name=name))
+        caption = t("start.welcome_user", language, name=name)
+        markup = None
+
+    await branding.send_welcome(session, message.chat.id, caption, reply_markup=markup)

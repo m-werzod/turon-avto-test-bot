@@ -27,7 +27,21 @@ JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):
-    """Base class for every ORM model."""
+    """Base class for every ORM model.
+
+    ``eager_defaults`` matters more than it looks. Server-generated values —
+    :class:`TimestampMixin`'s ``server_default`` and ``onupdate`` — are unknown to
+    the ORM after a flush, so by default the attribute is left expired and the
+    *next read of it* performs the fetch. Under asyncio that read is synchronous
+    IO from a non-greenlet context and raises ``MissingGreenlet``, turning an
+    innocent ``user.updated_at`` into a crash far from the code that caused it.
+
+    Fetching eagerly closes that trap for every model at once. On PostgreSQL and
+    SQLite the values come back via RETURNING on the original statement, so this
+    costs no extra round-trip.
+    """
+
+    __mapper_args__ = {"eager_defaults": True}  # noqa: RUF012 - SQLAlchemy API
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 

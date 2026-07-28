@@ -21,8 +21,8 @@
   "start": {
     "choose_language": "Tilni tanlang / Выберите язык",
     "language_saved": "Til o'zgartirildi: {language}",
-    "welcome_user": "Assalomu alaykum, {name}!\n\nBu bot <b>Turon Avto Test</b> kanaliga haydovchilik guvohnomasi imtihoni testlarini avtomatik joylab boradi.\n\nTestlarni kuzatib borish uchun kanalimizga obuna bo'ling.",
-    "welcome_admin": "Assalomu alaykum, {name}!\n\nSiz administrator sifatida kirdingiz. Boshqaruv panelidan foydalanishingiz mumkin.",
+    "welcome_user": "🚗 <b>Turon Avto Test</b>\n\nAssalomu alaykum, {name}!\n\nBu bot haydovchilik guvohnomasi imtihoni testlarini kanalimizga avtomatik joylab boradi.\n\n<b>Qanday ishlaydi:</b>\n1️⃣ Kanalimizga obuna bo'ling\n2️⃣ Har kuni belgilangan vaqtda yangi testlar chiqadi\n3️⃣ Har bir test — rasm, savol va 4 ta variant\n4️⃣ Variantni tanlang — javob darhol ko'rinadi\n\n<b>Buyruqlar:</b>\n/start — botni qayta ishga tushirish\n/language — tilni o'zgartirish\n/help — shu ma'lumot\n\nOmad tilaymiz! 🍀",
+    "welcome_admin": "🚗 <b>Turon Avto Test</b>\n\nAssalomu alaykum, {name}!\nSiz <b>administrator</b> sifatida kirdingiz.\n\n<b>Ishni boshlash:</b>\n1️⃣ «Kanalni ulash» — botni kanalga admin qiling\n2️⃣ «Testlarni yangilash» — savollar bazasini to'ldiring\n3️⃣ «Jadval» — kuniga nechta va soat nechada\n4️⃣ «Hozir yuborish» — darhol sinab ko'ring\n\nQuyidagi paneldan foydalaning 👇",
     "open_panel": "🛠 Boshqaruv paneli"
   },
   "menu": {

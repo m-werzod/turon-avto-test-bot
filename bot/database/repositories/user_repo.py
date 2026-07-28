@@ -28,7 +28,7 @@ class UserRepository(BaseRepository[BotUser]):
         last_name: str | None = None,
         is_admin: bool = False,
         default_language: str = "uz",
-    ) -> BotUser:
+    ) -> tuple[BotUser, bool]:
         """Record that a user interacted, creating the row on first contact.
 
         Profile fields are refreshed on every call so a renamed user does not go
@@ -36,7 +36,11 @@ class UserRepository(BaseRepository[BotUser]):
         must not be reset by an incidental update.
 
         Returns:
-            The stored user.
+            The stored user, and whether this call created it. Callers get the
+            flag rather than inferring first contact from ``created_at ==
+            updated_at``: that comparison reads a column the database owns, which
+            is both fragile and a needless second guess at something known here
+            for certain.
         """
         user = await self.get_by_telegram_id(telegram_id)
         now = datetime.now(UTC)
@@ -52,7 +56,7 @@ class UserRepository(BaseRepository[BotUser]):
                 last_seen_at=now,
             )
             await self.add(user)
-            return user
+            return user, True
 
         self.apply_updates(
             user,
@@ -63,7 +67,7 @@ class UserRepository(BaseRepository[BotUser]):
         )
         user.last_seen_at = now
         await self.session.flush()
-        return user
+        return user, False
 
     async def set_language(self, telegram_id: int, language: str) -> BotUser | None:
         """Persist a language choice."""

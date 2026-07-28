@@ -7,6 +7,7 @@ never drift apart.
 """
 
 from bot.services.backup_service import BackupResult, BackupService
+from bot.services.branding_service import BrandingService
 from bot.services.channel_service import ChannelCheckError, ChannelInfo, ChannelService
 from bot.services.import_service import ImportReport, ImportService
 from bot.services.media_service import MediaError, MediaResult, MediaService
@@ -22,6 +23,7 @@ from bot.services.stats_service import Statistics, StatsService
 __all__ = [
     "BackupResult",
     "BackupService",
+    "BrandingService",
     "ChannelCheckError",
     "ChannelInfo",
     "ChannelOutcome",
