@@ -41,6 +41,21 @@ async def safe_edit(
             text=text, reply_markup=reply_markup, parse_mode=parse_mode
         )
 
+    # A media message keeps its words in `caption`, not `text`, and edit_text on
+    # one is refused with "there is no text in the message to edit". The greeting
+    # carries the logo, so the main menu hangs off a photo — every panel button
+    # pressed from it lands here. Replace the photo with a text message; from
+    # then on the panel edits in place as normal.
+    if callback.message.text is None:
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest as exc:
+            # Not fatal: a leftover photo is untidy, a dead panel is not.
+            logger.debug("Could not remove the media message before replacing it: %s", exc)
+        return await callback.message.answer(
+            text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+
     try:
         result = await callback.message.edit_text(
             text=text, reply_markup=reply_markup, parse_mode=parse_mode
