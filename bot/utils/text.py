@@ -16,8 +16,9 @@ POLL_EXPLANATION_LIMIT = 200
 CAPTION_LIMIT = 1024
 MESSAGE_LIMIT = 4096
 
-#: Number of answer options every stored question must provide.
-REQUIRED_OPTION_COUNT = 4
+#: Telegram's own ceiling on quiz-poll options. The lower bound of two lives in
+#: bot.sources.base; this is the value the database constraint is built from.
+MAX_OPTION_COUNT = 10
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _ELLIPSIS = "…"

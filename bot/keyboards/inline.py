@@ -57,6 +57,7 @@ class CB:
     IMPORT = "im"
     IMPORT_FILE = "im:file"  # + ":<index>"
     IMPORT_UPLOAD = "im:up"
+    IMPORT_WEB = "im:web"
 
     # Backup / logs / settings
     BACKUP = "bk"
@@ -210,6 +211,7 @@ def import_keyboard(language: str, files: list[str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for index, name in enumerate(files[:10]):
         builder.button(text=f"📄 {name}"[:60], callback_data=f"{CB.IMPORT_FILE}:{index}")
+    builder.button(text=t("import.source_web", language), callback_data=CB.IMPORT_WEB)
     builder.button(text=t("import.source_upload", language), callback_data=CB.IMPORT_UPLOAD)
     builder.button(text=t("common.back", language), callback_data=CB.MENU)
     builder.adjust(1)

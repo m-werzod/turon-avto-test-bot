@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -16,8 +17,14 @@ from bot.handlers.helpers import answer_callback, safe_edit
 from bot.keyboards import CB, back_keyboard, import_keyboard
 from bot.locales.i18n import t
 from bot.services.import_service import ImportReport, ImportService
-from bot.sources.base import SourceError
-from bot.sources.registry import DATA_DIR, SUPPORTED_EXTENSIONS, build_source, discover_data_files
+from bot.sources.base import QuestionSource, SourceError
+from bot.sources.registry import (
+    DATA_DIR,
+    SUPPORTED_EXTENSIONS,
+    build_source,
+    discover_data_files,
+)
+from bot.sources.web_sources import EAvtomaktabSource
 from bot.states import ImportStates
 from bot.utils.logging import get_logger
 from bot.utils.text import escape_html
@@ -75,7 +82,29 @@ async def import_from_disk(
         return
 
     await answer_callback(callback)
-    await _run_import(callback, session, import_service, files[int(raw_index)], lang)
+    chosen = files[int(raw_index)]
+    await _run_import(callback, session, import_service, lambda: build_source(chosen), lang)
+
+
+@router.callback_query(F.data == CB.IMPORT_WEB)
+async def import_from_website(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    import_service: ImportService,
+    lang: str = "uz",
+) -> None:
+    """Scrape e-avtomaktab.uz and import what it offers."""
+    await answer_callback(callback)
+
+    content_language = await SettingsRepository(session).content_language()
+    await _run_import(
+        callback,
+        session,
+        import_service,
+        lambda: EAvtomaktabSource(language=content_language),
+        lang,
+        running_key="import.running_web",
+    )
 
 
 @router.callback_query(F.data == CB.IMPORT_UPLOAD)
@@ -145,7 +174,7 @@ async def receive_upload(
         return
 
     await state.clear()
-    await _run_import(status, session, import_service, destination, lang)
+    await _run_import(status, session, import_service, lambda: build_source(destination), lang)
 
 
 @router.message(ImportStates.waiting_for_file)
@@ -158,17 +187,24 @@ async def _run_import(
     target: CallbackQuery | Message,
     session: AsyncSession,
     import_service: ImportService,
-    path: Path,
+    source_factory: Callable[[], QuestionSource],
     language: str,
+    *,
+    running_key: str = "import.running",
 ) -> None:
     """Execute an import and report the outcome.
+
+    Takes a factory rather than a path so a file reader and the website scraper
+    share one reporting path; building the source is inside the try block because
+    an unsupported extension is itself an error worth showing the admin.
 
     Args:
         target: Callback whose message is edited, or a message to edit directly.
         session: Open session.
         import_service: Importer.
-        path: File to read.
+        source_factory: Builds the source to read.
         language: Admin's language.
+        running_key: Locale key for the "working" message.
     """
 
     async def render(text: str, markup: object | None = None) -> None:
@@ -177,20 +213,20 @@ async def _run_import(
         else:
             await target.edit_text(text, reply_markup=markup, parse_mode="HTML")  # type: ignore[arg-type]
 
-    await render(t("import.running", language))
+    await render(t(running_key, language))
 
     try:
-        source = build_source(path)
+        source = source_factory()
         report: ImportReport = await import_service.import_source(session, source)
     except SourceError as exc:
-        logger.warning("Import failed for %s: %s", path.name, exc)
+        logger.warning("Import failed: %s", exc)
         await render(
             t("import.failed", language, reason=escape_html(str(exc)[:400])),
             back_keyboard(language, CB.IMPORT),
         )
         return
     except Exception as exc:
-        logger.exception("Unexpected import failure for %s", path.name)
+        logger.exception("Unexpected import failure")
         await render(
             t("import.failed", language, reason=escape_html(str(exc)[:400])),
             back_keyboard(language, CB.IMPORT),

@@ -106,9 +106,25 @@ class TestOptionLayouts:
         record = {"id": "1", "savol": "Q?", "javoblar": OPTIONS, "togri_javob": 2}
         assert parse_record(record, location="t").correct_index == 1
 
-    def test_wrong_option_count_rejected(self) -> None:
-        with pytest.raises(QuestionValidationError, match="exactly 4 options"):
-            parse_record(base_record(options=OPTIONS[:3]), location="t")
+    @pytest.mark.parametrize("count", [2, 3, 4, 5])
+    def test_real_world_option_counts_are_accepted(self, count: int) -> None:
+        """The official banks run from two options to five, not a tidy four.
+
+        Only about one question in seven has exactly four, so a fixed count would
+        reject the great majority of everything imported.
+        """
+        options = [f"option {index}" for index in range(count)]
+        question = parse_record(base_record(options=options), location="t")
+        assert len(question.options) == count
+
+    def test_a_single_option_is_rejected(self) -> None:
+        with pytest.raises(QuestionValidationError, match="between 2 and 10 options"):
+            parse_record(base_record(options=OPTIONS[:1]), location="t")
+
+    def test_too_many_options_rejected(self) -> None:
+        """Telegram caps a poll at ten."""
+        with pytest.raises(QuestionValidationError, match="between 2 and 10 options"):
+            parse_record(base_record(options=[f"o{index}" for index in range(11)]), location="t")
 
     def test_duplicate_options_rejected(self) -> None:
         with pytest.raises(QuestionValidationError, match="duplicates"):

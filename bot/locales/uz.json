@@ -124,7 +124,9 @@
     "finished": "✅ Yangilash tugadi!\n\n• Yangi qo'shildi: <b>{created}</b>\n• Yangilandi: <b>{updated}</b>\n• O'zgarmadi: {unchanged}\n• O'tkazib yuborildi: {skipped}\n• Rasmlar yuklandi: {images}\n\nBazadagi jami testlar: <b>{total}</b>",
     "failed": "❌ Yangilashda xatolik:\n\n<code>{reason}</code>\n\nBatafsil ma'lumot loglarda.",
     "invalid_file": "❌ Faylni o'qib bo'lmadi.\n\n{reason}",
-    "validation_errors": "⚠️ {count} ta yozuv o'tkazib yuborildi (format xato).\n\nBirinchi xatoliklar:\n{samples}"
+    "validation_errors": "⚠️ {count} ta yozuv o'tkazib yuborildi (format xato).\n\nBirinchi xatoliklar:\n{samples}",
+    "source_web": "🌐 Saytdan yuklab olish (e-avtomaktab.uz)",
+    "running_web": "🌐 Saytdan testlar yuklanmoqda...\n\nBu bir necha daqiqa olishi mumkin. Iltimos kuting."
   },
   "backup": {
     "title": "💾 <b>Zaxira nusxa</b>",

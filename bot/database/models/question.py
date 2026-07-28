@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, CheckConstraint, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bot.database.base import Base, IntPrimaryKeyMixin, JSONType, TimestampMixin
-from bot.utils.text import REQUIRED_OPTION_COUNT, collapse_whitespace
+from bot.utils.text import MAX_OPTION_COUNT, collapse_whitespace
 
 if TYPE_CHECKING:
     from bot.database.models.quiz_post import QuizPost
@@ -37,7 +37,7 @@ class Question(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
-    #: Exactly ``REQUIRED_OPTION_COUNT`` answer strings, in display order.
+    #: Between two and ``MAX_OPTION_COUNT`` answer strings, in display order.
     options: Mapped[list[str]] = mapped_column(JSONType, nullable=False)
 
     #: Zero-based index into ``options``.
@@ -79,8 +79,11 @@ class Question(IntPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         # Idempotent imports hinge on this pair being unique.
         Index("uq_questions_source_external_id", "source", "external_id", unique=True),
+        # Upper bound is Telegram's poll limit, not a fixed option count: the
+        # official banks range from two options to five, so pinning this at four
+        # rejected most of every real import.
         CheckConstraint(
-            f"correct_index >= 0 AND correct_index < {REQUIRED_OPTION_COUNT}",
+            f"correct_index >= 0 AND correct_index < {MAX_OPTION_COUNT}",
             name="correct_index_in_range",
         ),
         # Partial-friendly composite index for the "next unseen question" query.

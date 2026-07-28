@@ -25,10 +25,17 @@ from bot.utils.text import (
     normalize_for_poll,
 )
 
-#: Every question must offer exactly this many options — Telegram quiz polls in
-#: this project are always four-way, and a bank with ragged option counts would
-#: fail at send time instead of at import time.
-REQUIRED_OPTIONS = 4
+#: Bounds on the number of options, matching what Telegram accepts for a quiz
+#: poll. Insisting on exactly four looks tidier but does not survive contact with
+#: the real question banks: the official Uzbek tests run from two options up to
+#: five, and only about one in seven has precisely four. A fixed count would
+#: silently reject the great majority of every source the bot imports from.
+MIN_OPTIONS = 2
+MAX_OPTIONS = 10
+
+#: How many indexed option keys (``option1``, ``answer2``, …) to probe for when a
+#: record spreads its options across separate columns.
+MAX_INDEXED_OPTIONS = MAX_OPTIONS
 
 # Accepted spellings for each logical field. Real-world question banks are
 # exported by many different tools; normalising here costs one dict and saves
@@ -170,7 +177,7 @@ def _extract_options(record: dict[str, Any]) -> list[str]:
 
     # Numbered columns: option1, answer2, variant_3 ...
     numbered: list[str] = []
-    for index in range(1, REQUIRED_OPTIONS + 1):
+    for index in range(1, MAX_INDEXED_OPTIONS + 1):
         for prefix in _INDEXED_OPTION_PREFIXES:
             for candidate in (f"{prefix}{index}", f"{prefix}_{index}"):
                 if candidate in record and str(record[candidate]).strip():
@@ -295,16 +302,17 @@ def parse_record(
         raise QuestionValidationError("question text is empty", location=location)
 
     options_raw = _extract_options(normalized)
-    if len(options_raw) != REQUIRED_OPTIONS:
+    if not MIN_OPTIONS <= len(options_raw) <= MAX_OPTIONS:
         raise QuestionValidationError(
-            f"expected exactly {REQUIRED_OPTIONS} options, found {len(options_raw)}",
+            f"expected between {MIN_OPTIONS} and {MAX_OPTIONS} options, "
+            f"found {len(options_raw)}",
             location=location,
         )
 
     options = [normalize_for_poll(option, POLL_OPTION_LIMIT) for option in options_raw]
     if any(not option for option in options):
         raise QuestionValidationError("one or more options are empty", location=location)
-    if len({option.casefold() for option in options}) != REQUIRED_OPTIONS:
+    if len({option.casefold() for option in options}) != len(options):
         raise QuestionValidationError("options contain duplicates", location=location)
 
     correct_index = _resolve_correct_index(normalized, options, location)
