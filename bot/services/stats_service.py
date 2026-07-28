@@ -96,9 +96,7 @@ class StatsService:
         today = datetime.now(self.timezone).date()
         stats.sent_today = await deliveries.count_sent_on(today, self.timezone)
 
-        stats.channels = [
-            channel.display_name for channel in await channels.list_active()
-        ]
+        stats.channels = [channel.display_name for channel in await channels.list_active()]
 
         stats.scheduler_paused = await settings_repo.is_scheduler_paused()
         stats.schedule_times = [slot.label for slot in await schedule.list_enabled()]

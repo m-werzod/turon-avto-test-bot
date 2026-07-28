@@ -21,7 +21,7 @@ from bot.database.repositories import (
     SettingsRepository,
     UpsertResult,
 )
-from bot.services.media_service import MediaError, MediaResult, MediaService
+from bot.services.media_service import MediaResult, MediaService
 from bot.sources.base import QuestionSource, SourceError
 from bot.utils.logging import get_logger
 
@@ -187,9 +187,7 @@ class ImportService:
                 "seconds": round(report.duration_seconds, 1),
             },
         )
-        logger.info(
-            "Import finished in %.1fs — %s", report.duration_seconds, report.summary_line()
-        )
+        logger.info("Import finished in %.1fs — %s", report.duration_seconds, report.summary_line())
         return report
 
     async def _fetch_images(

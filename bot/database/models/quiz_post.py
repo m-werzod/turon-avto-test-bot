@@ -48,7 +48,12 @@ class QuizPost(IntPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     trigger: Mapped[PostTrigger] = mapped_column(
-        SAEnum(PostTrigger, native_enum=False, length=16, values_callable=lambda e: [m.value for m in e]),
+        SAEnum(
+            PostTrigger,
+            native_enum=False,
+            length=16,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         default=PostTrigger.SCHEDULED,
     )

@@ -25,7 +25,6 @@ from bot.database.repositories import (
     ScheduleRepository,
     SettingsRepository,
 )
-from bot.database.session import Database
 from bot.scheduler.jobs import JobContext, run_maintenance, run_scheduled_post
 from bot.utils.logging import get_logger
 

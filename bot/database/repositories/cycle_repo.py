@@ -39,10 +39,7 @@ class CycleRepository(BaseRepository[Cycle]):
     async def get_open_cycle(self) -> Cycle | None:
         """The cycle currently accepting posts, if one is open."""
         stmt = (
-            select(Cycle)
-            .where(Cycle.completed_at.is_(None))
-            .order_by(Cycle.number.desc())
-            .limit(1)
+            select(Cycle).where(Cycle.completed_at.is_(None)).order_by(Cycle.number.desc()).limit(1)
         )
         return await self.session.scalar(stmt)
 
@@ -94,9 +91,7 @@ class CycleRepository(BaseRepository[Cycle]):
             stmt = stmt.where(Question.language == language)
         return int(await self.session.scalar(stmt) or 0)
 
-    async def _pick_unused_question(
-        self, cycle_id: int, language: str | None
-    ) -> Question | None:
+    async def _pick_unused_question(self, cycle_id: int, language: str | None) -> Question | None:
         """Choose one random active question unused in this cycle.
 
         Randomisation happens in the database rather than by loading ids into

@@ -28,10 +28,29 @@ _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 #: via ``extra=`` and is therefore worth emitting in the JSON payload.
 _RESERVED_RECORD_ATTRS = frozenset(
     {
-        "args", "asctime", "created", "exc_info", "exc_text", "filename",
-        "funcName", "levelname", "levelno", "lineno", "message", "module",
-        "msecs", "msg", "name", "pathname", "process", "processName",
-        "relativeCreated", "stack_info", "taskName", "thread", "threadName",
+        "args",
+        "asctime",
+        "created",
+        "exc_info",
+        "exc_text",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "message",
+        "module",
+        "msecs",
+        "msg",
+        "name",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "taskName",
+        "thread",
+        "threadName",
     }
 )
 
@@ -62,7 +81,9 @@ class JsonFormatter(logging.Formatter):
 
         for key, value in record.__dict__.items():
             if key not in _RESERVED_RECORD_ATTRS and not key.startswith("_"):
-                payload[key] = value if isinstance(value, str | int | float | bool | None) else repr(value)
+                payload[key] = (
+                    value if isinstance(value, str | int | float | bool | None) else repr(value)
+                )
 
         return json.dumps(payload, ensure_ascii=False, default=str)
 
@@ -127,9 +148,7 @@ def setup_logging(
     root.addHandler(console)
 
     root.addHandler(
-        _build_file_handler(
-            log_dir / "app.log", numeric_level, formatter, max_bytes, backup_count
-        )
+        _build_file_handler(log_dir / "app.log", numeric_level, formatter, max_bytes, backup_count)
     )
     root.addHandler(
         _build_file_handler(

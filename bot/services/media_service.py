@@ -150,7 +150,9 @@ class MediaService:
         """Resolve a stored relative path to an absolute one."""
         return self.media_root / relative_path
 
-    async def _fetch_bytes(self, session: aiohttp.ClientSession, url: str) -> tuple[bytes, str | None]:
+    async def _fetch_bytes(
+        self, session: aiohttp.ClientSession, url: str
+    ) -> tuple[bytes, str | None]:
         """Download a URL, enforcing the size cap while streaming.
 
         Raises:
@@ -181,9 +183,7 @@ class MediaService:
 
             return b"".join(chunks), response.headers.get("Content-Type")
 
-    async def download(
-        self, url: str, session: aiohttp.ClientSession | None = None
-    ) -> MediaResult:
+    async def download(self, url: str, session: aiohttp.ClientSession | None = None) -> MediaResult:
         """Fetch an image and cache it locally.
 
         A previously cached copy is returned immediately, which makes re-running
@@ -290,7 +290,7 @@ class MediaService:
                 except MediaError as exc:
                     results[url] = str(exc)
                     logger.warning("Image download failed: %s", exc)
-                except Exception as exc:  # noqa: BLE001 - one image must not kill the batch
+                except Exception as exc:
                     results[url] = f"unexpected error: {exc}"
                     logger.exception("Unexpected error downloading %s", url)
                 finally:

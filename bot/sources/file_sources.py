@@ -218,9 +218,7 @@ class CsvQuestionSource(FileQuestionSource):
         if not reader.fieldnames:
             raise SourceError(f"{self.path.name}: missing a header row")
 
-        records = [
-            {key: value for key, value in row.items() if key is not None} for row in reader
-        ]
+        records = [{key: value for key, value in row.items() if key is not None} for row in reader]
         if not records:
             raise SourceError(f"{self.path.name}: has a header but no data rows")
         return records
@@ -243,7 +241,7 @@ class XlsxQuestionSource(FileQuestionSource):
 
         try:
             workbook = load_workbook(self.path, read_only=True, data_only=True)
-        except Exception as exc:  # noqa: BLE001 - openpyxl raises many types
+        except Exception as exc:
             raise SourceError(f"{self.path.name}: cannot open as a workbook ({exc})") from exc
 
         try:
@@ -265,11 +263,7 @@ class XlsxQuestionSource(FileQuestionSource):
                 if all(cell is None or str(cell).strip() == "" for cell in row):
                     continue  # blank spacer row
                 records.append(
-                    {
-                        headers[index]: cell
-                        for index, cell in enumerate(row)
-                        if index < len(headers)
-                    }
+                    {headers[index]: cell for index, cell in enumerate(row) if index < len(headers)}
                 )
         finally:
             workbook.close()

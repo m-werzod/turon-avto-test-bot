@@ -17,9 +17,7 @@ class UserRepository(BaseRepository[BotUser]):
 
     async def get_by_telegram_id(self, telegram_id: int) -> BotUser | None:
         """Look a user up by Telegram id."""
-        return await self.session.scalar(
-            select(BotUser).where(BotUser.telegram_id == telegram_id)
-        )
+        return await self.session.scalar(select(BotUser).where(BotUser.telegram_id == telegram_id))
 
     async def touch(
         self,
@@ -85,4 +83,4 @@ class UserRepository(BaseRepository[BotUser]):
         """User counts grouped by interface language."""
         stmt = select(BotUser.language, func.count()).group_by(BotUser.language)
         result = await self.session.execute(stmt)
-        return {language: count for language, count in result.all()}
+        return dict(result.all())

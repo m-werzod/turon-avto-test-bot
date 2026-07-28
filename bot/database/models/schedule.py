@@ -6,7 +6,6 @@ from datetime import time
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Index, Time
-
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bot.database.base import Base, IntPrimaryKeyMixin, TimestampMixin

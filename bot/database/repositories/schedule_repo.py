@@ -36,9 +36,7 @@ class ScheduleRepository(BaseRepository[ScheduleSlot]):
 
     async def get_by_time(self, run_at: time) -> ScheduleSlot | None:
         """Find a slot by its exact time."""
-        return await self.session.scalar(
-            select(ScheduleSlot).where(ScheduleSlot.run_at == run_at)
-        )
+        return await self.session.scalar(select(ScheduleSlot).where(ScheduleSlot.run_at == run_at))
 
     async def add_slot(self, run_at: time) -> tuple[ScheduleSlot, bool]:
         """Add a posting time, or re-enable it if it already exists.

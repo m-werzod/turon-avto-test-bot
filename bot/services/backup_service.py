@@ -91,10 +91,7 @@ def _json_default(value: Any) -> Any:
 
 def _row_to_dict(instance: Any) -> dict[str, Any]:
     """Convert an ORM instance into a plain serialisable mapping."""
-    return {
-        column.name: getattr(instance, column.name)
-        for column in instance.__table__.columns
-    }
+    return {column.name: getattr(instance, column.name) for column in instance.__table__.columns}
 
 
 class BackupService:
@@ -159,9 +156,7 @@ class BackupService:
                     "push the archive past Telegram's 50 MB upload limit."
                 ),
             }
-            archive.writestr(
-                "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
-            )
+            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
         size = archive_path.stat().st_size
         await EventRepository(session).record(

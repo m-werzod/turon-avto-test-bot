@@ -10,13 +10,10 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
 
 from bot.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-T = TypeVar("T")
 
 
 class RetryError(RuntimeError):
@@ -34,7 +31,7 @@ class RetryError(RuntimeError):
         self.last_error = last_error
 
 
-async def retry_async(
+async def retry_async[T](
     func: Callable[[], Awaitable[T]],
     *,
     attempts: int = 3,
@@ -82,7 +79,7 @@ async def retry_async(
             if attempt == attempts:
                 break
             delay = min(backoff * (2 ** (attempt - 1)), max_backoff)
-            delay += random.uniform(0, delay * 0.1)  # noqa: S311 - jitter, not crypto
+            delay += random.uniform(0, delay * 0.1)
             logger.warning(
                 "%s failed (attempt %d/%d): %s — retrying in %.1fs",
                 operation,
@@ -94,7 +91,7 @@ async def retry_async(
             )
             await asyncio.sleep(delay)
 
-    assert last_error is not None  # noqa: S101 - loop always assigns before break
+    assert last_error is not None
     logger.error(
         "%s failed after %d attempt(s): %s",
         operation,

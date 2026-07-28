@@ -149,7 +149,9 @@ class ChannelService:
             username=chat.username,
         )
         logger.info(
-            "Channel verified: %s (%d)", info.display_name, info.chat_id,
+            "Channel verified: %s (%d)",
+            info.display_name,
+            info.chat_id,
             extra={"channel": info.display_name, "chat_id": info.chat_id},
         )
         return info

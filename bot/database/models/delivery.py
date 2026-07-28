@@ -6,7 +6,8 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bot.database.base import Base, IntPrimaryKeyMixin, TimestampMixin

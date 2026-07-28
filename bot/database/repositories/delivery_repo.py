@@ -23,9 +23,7 @@ class DeliveryRepository(BaseRepository[Delivery]):
         Written up-front so a crash mid-send leaves visible evidence rather than
         a silent gap.
         """
-        delivery = Delivery(
-            post_id=post_id, channel_id=channel_id, status=DeliveryStatus.PENDING
-        )
+        delivery = Delivery(post_id=post_id, channel_id=channel_id, status=DeliveryStatus.PENDING)
         return await self.add(delivery)
 
     async def mark_sent(
@@ -52,9 +50,7 @@ class DeliveryRepository(BaseRepository[Delivery]):
     async def count_sent(self) -> int:
         """Total successful deliveries across all time and channels."""
         stmt = (
-            select(func.count())
-            .select_from(Delivery)
-            .where(Delivery.status == DeliveryStatus.SENT)
+            select(func.count()).select_from(Delivery).where(Delivery.status == DeliveryStatus.SENT)
         )
         return int(await self.session.scalar(stmt) or 0)
 

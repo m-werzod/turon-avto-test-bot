@@ -111,7 +111,7 @@ async def run_scheduled_post(
         await context.notify.notify_error(where, exc, language=context.admin_language)
         return None
 
-    except Exception as exc:  # noqa: BLE001 - a job must never kill the scheduler
+    except Exception as exc:
         logger.exception("Unhandled error in scheduled post (slot %s)", slot_label)
         await context.notify.notify_error(where, exc, language=context.admin_language)
         return None
@@ -139,9 +139,7 @@ async def run_maintenance(context: JobContext) -> None:
     """
     try:
         async with context.db.session() as session:
-            removed = await EventRepository(session).purge_older_than(
-                EVENT_LOG_RETENTION_DAYS
-            )
+            removed = await EventRepository(session).purge_older_than(EVENT_LOG_RETENTION_DAYS)
         if removed:
             logger.info("Maintenance: purged %d old event log row(s)", removed)
 
@@ -151,7 +149,7 @@ async def run_maintenance(context: JobContext) -> None:
             if pruned:
                 logger.info("Maintenance: pruned %d old backup archive(s)", pruned)
 
-    except Exception as exc:  # noqa: BLE001 - housekeeping must never break posting
+    except Exception as exc:
         logger.exception("Maintenance job failed")
         await context.notify.notify_error(
             "scheduler:maintenance", exc, language=context.admin_language

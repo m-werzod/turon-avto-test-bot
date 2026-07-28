@@ -226,9 +226,7 @@ class QuestionRepository(BaseRepository[Question]):
         Returns:
             Number of questions deactivated.
         """
-        stmt = select(Question).where(
-            Question.source == source, Question.is_active.is_(True)
-        )
+        stmt = select(Question).where(Question.source == source, Question.is_active.is_(True))
         result = await self.session.scalars(stmt)
         deactivated = 0
         for question in result:

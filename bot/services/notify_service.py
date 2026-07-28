@@ -87,14 +87,12 @@ class NotifyService:
                 # Most often the admin has simply never opened a chat with the
                 # bot, which is not something the caller can act on.
                 logger.warning("Could not notify admin %d: %s", admin_id, exc)
-            except Exception:  # noqa: BLE001 - notification must never propagate
+            except Exception:
                 logger.exception("Unexpected error notifying admin %d", admin_id)
 
         return delivered
 
-    async def notify_error(
-        self, where: str, error: BaseException, *, language: str = "uz"
-    ) -> int:
+    async def notify_error(self, where: str, error: BaseException, *, language: str = "uz") -> int:
         """Report an unhandled error.
 
         Args:
@@ -116,9 +114,7 @@ class NotifyService:
         # firing every minute usually carries slightly different detail.
         return await self.broadcast(message, fingerprint=f"{where}:{type(error).__name__}")
 
-    async def notify_channel_lost(
-        self, channel: str, reason: str, *, language: str = "uz"
-    ) -> int:
+    async def notify_channel_lost(self, channel: str, reason: str, *, language: str = "uz") -> int:
         """Tell admins the bot can no longer post to a channel."""
         message = t(
             "errors.channel_lost_access",

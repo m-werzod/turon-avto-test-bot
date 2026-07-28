@@ -20,9 +20,7 @@ class BotUser(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "bot_users"
 
-    telegram_id: Mapped[int] = mapped_column(
-        TelegramId, nullable=False, unique=True, index=True
-    )
+    telegram_id: Mapped[int] = mapped_column(TelegramId, nullable=False, unique=True, index=True)
 
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)

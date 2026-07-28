@@ -27,7 +27,6 @@ from bot.database.models.question import Question
 from bot.database.models.quiz_post import PostTrigger, QuizPost
 from bot.database.repositories import (
     ChannelRepository,
-    CycleExhaustedError,
     CycleRepository,
     DeliveryRepository,
     EventRepository,
@@ -419,15 +418,13 @@ class QuizService:
             return await self._record_failure(
                 session, delivery, channel, exc, delivery_repo, channels_repo
             )
-        except Exception as exc:  # noqa: BLE001 - the bot must survive anything here
+        except Exception as exc:
             logger.exception("Unexpected error sending to %s", label)
             return await self._record_failure(
                 session, delivery, channel, exc, delivery_repo, channels_repo
             )
 
-        await delivery_repo.mark_sent(
-            delivery, poll_message_id=poll_id, photo_message_id=photo_id
-        )
+        await delivery_repo.mark_sent(delivery, poll_message_id=poll_id, photo_message_id=photo_id)
         if file_id and file_id != question.image_file_id:
             await question_repo.set_file_id(question.id, file_id)
 

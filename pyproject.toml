@@ -55,7 +55,12 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+# BLE is enabled deliberately: broad `except Exception` blocks are load-bearing
+# in this codebase (a job or handler must never take the bot down), and having
+# the rule on forces each one to carry an explicit noqa explaining why.
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "BLE"]
+# RUF001-003 flag Cyrillic/Latin lookalike characters, which are legitimate in
+# the Uzbek and Russian strings throughout this project.
 ignore = ["B008", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
