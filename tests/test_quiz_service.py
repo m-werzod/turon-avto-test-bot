@@ -15,6 +15,7 @@ from bot.database.repositories import ChannelRepository, DeliveryRepository
 from bot.services.media_service import MediaService
 from bot.services.quiz_service import NoChannelsError, QuizService
 from bot.utils.text import POLL_EXPLANATION_LIMIT, POLL_OPTION_LIMIT, POLL_QUESTION_LIMIT
+from tests.conftest import make_question
 
 
 @dataclass
@@ -277,3 +278,84 @@ class TestSendBatch:
 
         assert reports == []
         assert bot.polls == []
+
+
+class TestSingleMessageDelivery:
+    """An illustrated question must arrive as one post, not two.
+
+    Before the Bot API allowed media on a poll this took a photo message plus a
+    poll message, so a reader scrolling the channel met options with no picture
+    or a picture whose options had not arrived. The picture now rides inside the
+    poll.
+    """
+
+    async def _add_channel(self, session: AsyncSession, chat_id: int) -> None:
+        await ChannelRepository(session).upsert(
+            chat_id=chat_id, username=f"c{abs(chat_id)}", title="Channel"
+        )
+
+    async def _question_with_image(self, session: AsyncSession, media: MediaService) -> Question:
+        """Store one question whose image exists on disk."""
+        question = make_question(1)
+        relative = "ab/picture.jpg"
+        path = media.absolute_path(relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Smallest valid JPEG the service will accept as a real file.
+        path.write_bytes(bytes.fromhex("ffd8ffdb004300ff") + b"\x00" * 32 + bytes.fromhex("ffd9"))
+        question.image_url = "https://example.uz/picture.jpg"
+        question.image_path = relative
+        session.add(question)
+        await session.flush()
+        return question
+
+    async def test_illustrated_question_sends_exactly_one_message(
+        self, session: AsyncSession, quiz_service
+    ) -> None:
+        service, bot = quiz_service
+        await self._add_channel(session, -401)
+        await self._question_with_image(session, service.media)
+
+        await service.send_next(session, trigger=PostTrigger.MANUAL)
+
+        assert len(bot.polls) == 1, "expected a single poll message"
+        assert bot.photos == [], "the photo must not be sent as its own message"
+
+    async def test_the_image_travels_on_the_poll(
+        self, session: AsyncSession, quiz_service
+    ) -> None:
+        service, bot = quiz_service
+        await self._add_channel(session, -402)
+        await self._question_with_image(session, service.media)
+
+        await service.send_next(session, trigger=PostTrigger.MANUAL)
+
+        assert bot.polls[0].get("media") is not None
+
+    async def test_question_without_an_image_still_sends_a_plain_poll(
+        self, session: AsyncSession, question_bank, quiz_service
+    ) -> None:
+        service, bot = quiz_service
+        await self._add_channel(session, -403)
+
+        await service.send_next(session, trigger=PostTrigger.MANUAL)
+
+        assert len(bot.polls) == 1
+        assert bot.polls[0].get("media") is None
+        assert bot.photos == []
+
+    async def test_a_missing_image_file_does_not_cost_the_post(
+        self, session: AsyncSession, quiz_service
+    ) -> None:
+        """A cached path pointing at a deleted file must degrade, not fail."""
+        service, bot = quiz_service
+        await self._add_channel(session, -404)
+
+        question = make_question(2)
+        question.image_path = "zz/vanished.jpg"
+        session.add(question)
+        await session.flush()
+
+        report = await service.send_next(session, trigger=PostTrigger.MANUAL)
+
+        assert report.succeeded == 1
+        assert bot.polls[0].get("media") is None

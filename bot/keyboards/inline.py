@@ -48,6 +48,9 @@ class CB:
     SCHED_WEEKENDS = "sc:wk"
     SCHED_BATCH = "sc:batch"
     SCHED_BATCH_SET = "sc:batch:set"  # + ":<n>"
+    SCHED_HOUR = "sc:h"  # + ":<hour>"
+    SCHED_MINUTE = "sc:m"  # + ":<minute>"
+    SCHED_UNDO = "sc:undo"
 
     # Content
     STATS = "st"
@@ -165,6 +168,47 @@ def posts_per_day_keyboard(language: str) -> InlineKeyboardMarkup:
         )
     builder.button(text=t("common.cancel", language), callback_data=CB.SCHED)
     builder.adjust(3, 1)
+    return builder.as_markup()
+
+
+#: Minutes offered by the picker. Quarter hours plus the tens that Uzbek
+#: driving schools tend to use; a free-typed minute buys nothing here.
+MINUTE_OPTIONS = (0, 10, 15, 20, 30, 40, 45, 50)
+
+
+def hour_keyboard(
+    language: str, *, index: int, total: int, picked: list[str]
+) -> InlineKeyboardMarkup:
+    """Pick the hour for posting slot ``index`` of ``total``.
+
+    Args:
+        language: Interface language.
+        index: Zero-based slot being chosen.
+        total: How many slots the admin asked for.
+        picked: Times already chosen, shown so the admin can see progress.
+
+    Returns:
+        A 24-button grid, six to a row.
+    """
+    builder = InlineKeyboardBuilder()
+    for hour in range(24):
+        builder.button(text=f"{hour:02d}", callback_data=f"{CB.SCHED_HOUR}:{hour}")
+
+    if picked:
+        builder.button(text=t("scheduler.undo_last", language), callback_data=CB.SCHED_UNDO)
+    builder.button(text=t("common.cancel", language), callback_data=CB.SCHED)
+
+    builder.adjust(*([6] * 4), *([1] * (2 if picked else 1)))
+    return builder.as_markup()
+
+
+def minute_keyboard(language: str, hour: int) -> InlineKeyboardMarkup:
+    """Pick the minute, having already chosen ``hour``."""
+    builder = InlineKeyboardBuilder()
+    for minute in MINUTE_OPTIONS:
+        builder.button(text=f"{hour:02d}:{minute:02d}", callback_data=f"{CB.SCHED_MINUTE}:{minute}")
+    builder.button(text=t("common.back", language), callback_data=CB.SCHED_UNDO)
+    builder.adjust(4, 4, 1)
     return builder.as_markup()
 
 

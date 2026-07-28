@@ -1,9 +1,10 @@
 """Publishing a question as a Telegram quiz poll.
 
-The Bot API has no way to attach an image *to* a poll, so an illustrated question
-goes out as two messages: the picture (carrying the question as its caption),
-immediately followed by the quiz poll itself. Both carry the full question text
-so each message stands on its own in the channel feed.
+An illustrated question goes out as a *single* message: ``sendPoll`` accepts a
+``media`` attachment, so the picture, the question and the options arrive
+together. This used to require two messages — a photo captioned with the question
+followed by the poll — which left readers scrolling past options with no picture,
+or a picture whose options had not loaded yet.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from aiogram.exceptions import (
     TelegramNetworkError,
     TelegramRetryAfter,
 )
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, InputMediaPhoto, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models.channel import Channel
@@ -35,16 +36,12 @@ from bot.database.repositories import (
     SettingsRepository,
 )
 from bot.database.repositories.cycle_repo import CycleExhaustedError
-from bot.locales.i18n import t
 from bot.services.media_service import MediaService
 from bot.utils.logging import get_logger
 from bot.utils.text import (
-    CAPTION_LIMIT,
     POLL_EXPLANATION_LIMIT,
     POLL_QUESTION_LIMIT,
-    escape_html,
     normalize_for_poll,
-    truncate,
 )
 
 logger = get_logger(__name__)
@@ -117,7 +114,6 @@ class QuizService:
         bot: Bot,
         media: MediaService,
         *,
-        send_as_document: bool = False,
         content_language_default: str = "uz",
     ) -> None:
         """Configure the publisher.
@@ -125,27 +121,13 @@ class QuizService:
         Args:
             bot: aiogram bot instance.
             media: Used to resolve cached image paths.
-            send_as_document: Send images uncompressed as documents. Preserves
-                original quality at the cost of not rendering inline.
             content_language_default: Fallback language for question selection.
         """
         self.bot = bot
         self.media = media
-        self.send_as_document = send_as_document
         self.content_language_default = content_language_default
 
     # --- Message construction -------------------------------------------------
-
-    @staticmethod
-    def build_caption(question: Question, number: int, language: str) -> str:
-        """Build the photo caption carrying the question text."""
-        caption = t(
-            "quiz.caption",
-            language,
-            number=number,
-            text=escape_html(question.text),
-        )
-        return truncate(caption, CAPTION_LIMIT)
 
     @staticmethod
     def build_poll_payload(question: Question) -> dict[str, Any]:
@@ -171,96 +153,103 @@ class QuizService:
 
     # --- Sending --------------------------------------------------------------
 
-    async def _send_image(
-        self, chat_id: int, question: Question, caption: str
-    ) -> tuple[Message | None, str | None]:
-        """Send the question image, if the question has one.
-
-        Prefers a cached Telegram ``file_id`` — re-uploading the same picture on
-        every cycle would waste bandwidth for no gain. A rejected ``file_id``
-        falls back to the local file and the caller clears the stale value.
+    def _resolve_media(self, question: Question) -> tuple[str | FSInputFile | None, bool]:
+        """Pick what to attach to the poll.
 
         Returns:
-            The sent message (or ``None`` when there is no image), and the
-            ``file_id`` to cache.
+            The media reference and whether it came from the cache. A cached
+            ``file_id`` costs no upload; the local file is the fallback.
         """
         if question.image_file_id:
-            try:
-                message = await self._dispatch_image(chat_id, question.image_file_id, caption)
-                return message, question.image_file_id
-            except TelegramBadRequest as exc:
-                logger.warning(
-                    "Cached file_id rejected for question %d (%s); re-uploading",
-                    question.id,
-                    exc.message,
-                )
+            return question.image_file_id, True
 
         if not question.image_path:
-            return None, None
+            return None, False
 
         path = self.media.absolute_path(question.image_path)
         if not path.exists():
             logger.warning(
-                "Image file missing for question %d: %s — sending poll without it",
+                "Image file missing for question %d: %s — sending the poll without it",
                 question.id,
                 path,
             )
-            return None, None
+            return None, False
 
-        message = await self._dispatch_image(chat_id, FSInputFile(path), caption)
-        return message, self._extract_file_id(message)
-
-    async def _dispatch_image(
-        self, chat_id: int, media: str | FSInputFile, caption: str
-    ) -> Message:
-        """Send an image as a photo or an uncompressed document."""
-        if self.send_as_document:
-            return await self.bot.send_document(
-                chat_id=chat_id, document=media, caption=caption, parse_mode="HTML"
-            )
-        return await self.bot.send_photo(
-            chat_id=chat_id, photo=media, caption=caption, parse_mode="HTML"
-        )
-
-    @staticmethod
-    def _extract_file_id(message: Message) -> str | None:
-        """Pull a reusable ``file_id`` out of a sent message."""
-        if message.document is not None:
-            return message.document.file_id
-        if message.photo:
-            # Largest rendition last; that is the one worth caching.
-            return message.photo[-1].file_id
-        return None
+        return FSInputFile(path), False
 
     async def _publish_to_channel(
         self, channel: Channel, question: Question, number: int, language: str
     ) -> tuple[int | None, int | None, str | None]:
-        """Publish one question to one channel.
+        """Publish one question to one channel as a single message.
+
+        The picture rides *inside* the quiz poll via ``sendPoll``'s ``media``
+        field, so the channel gets one post showing the image, the question and
+        the options together. Sending the photo separately and the poll after it
+        — the only option before the Bot API gained poll media — split every
+        question into two posts, and a reader scrolling past saw options with no
+        picture or a picture with no options.
 
         Returns:
-            Poll message id, photo message id, and the cached ``file_id``.
+            Poll message id, photo message id (always ``None`` now that there is
+            no separate photo), and the ``file_id`` worth caching.
 
         Raises:
             TelegramForbiddenError: Access to the channel was lost.
             TelegramBadRequest: The request was rejected.
             TelegramNetworkError: The call did not reach Telegram.
         """
-        photo_message: Message | None = None
-        file_id: str | None = None
+        payload = self.build_poll_payload(question)
+        media, from_cache = self._resolve_media(question)
 
-        if question.has_image:
-            caption = self.build_caption(question, number, language)
-            photo_message, file_id = await self._send_image(channel.chat_id, question, caption)
+        if media is not None:
+            try:
+                message = await self.bot.send_poll(
+                    chat_id=channel.chat_id,
+                    media=InputMediaPhoto(media=media),
+                    **payload,
+                )
+            except TelegramBadRequest as exc:
+                if from_cache:
+                    # A stale file_id must not cost the post. Retry from disk and
+                    # let the caller clear the cached value.
+                    logger.warning(
+                        "Cached file_id rejected for question %d (%s); re-uploading",
+                        question.id,
+                        exc.message,
+                    )
+                    fresh, _ = self._resolve_media_from_disk(question)
+                    if fresh is not None:
+                        message = await self.bot.send_poll(
+                            chat_id=channel.chat_id,
+                            media=InputMediaPhoto(media=fresh),
+                            **payload,
+                        )
+                        return message.message_id, None, self._extract_poll_file_id(message)
+                raise
 
-        poll_message = await self.bot.send_poll(
-            chat_id=channel.chat_id, **self.build_poll_payload(question)
-        )
+            return message.message_id, None, self._extract_poll_file_id(message)
 
-        return (
-            poll_message.message_id,
-            photo_message.message_id if photo_message else None,
-            file_id,
-        )
+        message = await self.bot.send_poll(chat_id=channel.chat_id, **payload)
+        return message.message_id, None, None
+
+    def _resolve_media_from_disk(self, question: Question) -> tuple[FSInputFile | None, bool]:
+        """Resolve the local file, ignoring any cached ``file_id``."""
+        if not question.image_path:
+            return None, False
+        path = self.media.absolute_path(question.image_path)
+        if not path.exists():
+            return None, False
+        return FSInputFile(path), False
+
+    @staticmethod
+    def _extract_poll_file_id(message: Message) -> str | None:
+        """Pull a reusable ``file_id`` out of a poll's attached media."""
+        media = getattr(getattr(message, "poll", None), "media", None)
+        photo = getattr(media, "photo", None)
+        if photo:
+            # Largest rendition last; that is the one worth caching.
+            return str(photo[-1].file_id)
+        return None
 
     @staticmethod
     def _is_access_lost(error: Exception) -> bool:

@@ -18,6 +18,8 @@ from bot.keyboards import (
     CB,
     back_keyboard,
     batch_size_keyboard,
+    hour_keyboard,
+    minute_keyboard,
     posts_per_day_keyboard,
     scheduler_keyboard,
 )
@@ -91,12 +93,12 @@ async def prompt_for_times(callback: CallbackQuery, state: FSMContext, lang: str
 
     count = int(raw_count)
     await state.set_state(ScheduleStates.waiting_for_times)
-    await state.update_data(expected_count=count)
+    await state.update_data(expected_count=count, picked=[], pending_hour=None)
     await answer_callback(callback)
     await safe_edit(
         callback,
-        t("scheduler.enter_times", lang, count=count),
-        reply_markup=back_keyboard(lang, CB.SCHED),
+        _picker_prompt(lang, [], count),
+        reply_markup=hour_keyboard(lang, index=0, total=count, picked=[]),
     )
 
 
@@ -290,4 +292,147 @@ async def _render_scheduler(
 
     await safe_edit(
         callback, "\n".join(lines), reply_markup=scheduler_keyboard(language, paused=paused)
+    )
+
+
+@router.callback_query(F.data.startswith(f"{CB.SCHED_HOUR}:"))
+async def pick_hour(callback: CallbackQuery, state: FSMContext, lang: str = "uz") -> None:
+    """Record the chosen hour and offer the minutes."""
+    raw = (callback.data or "").rsplit(":", 1)[-1]
+    if not raw.isdigit() or not 0 <= int(raw) <= 23:
+        await answer_callback(callback, t("common.error", lang), alert=True)
+        return
+
+    hour = int(raw)
+    await state.update_data(pending_hour=hour)
+    await answer_callback(callback)
+    await safe_edit(
+        callback,
+        t("scheduler.pick_minute", lang, hour=f"{hour:02d}"),
+        reply_markup=minute_keyboard(lang, hour),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{CB.SCHED_MINUTE}:"))
+async def pick_minute(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    scheduler: QuizScheduler,
+    lang: str = "uz",
+) -> None:
+    """Complete one slot, then either ask for the next or save."""
+    raw = (callback.data or "").rsplit(":", 1)[-1]
+    data = await state.get_data()
+    hour = data.get("pending_hour")
+
+    if not raw.isdigit() or hour is None or not 0 <= int(raw) <= 59:
+        await answer_callback(callback, t("common.error", lang), alert=True)
+        return
+
+    picked: list[str] = list(data.get("picked", []))
+    chosen = f"{int(hour):02d}:{int(raw):02d}"
+
+    if chosen in picked:
+        # Two identical slots would fire twice at the same instant and post the
+        # same batch twice over.
+        await answer_callback(
+            callback, t("scheduler.already_picked", lang, time=chosen), alert=True
+        )
+        return
+
+    picked.append(chosen)
+    expected = int(data.get("expected_count", 1))
+    await state.update_data(picked=picked, pending_hour=None)
+
+    if len(picked) < expected:
+        await answer_callback(callback, chosen)
+        await safe_edit(
+            callback,
+            _picker_prompt(lang, picked, expected),
+            reply_markup=hour_keyboard(lang, index=len(picked), total=expected, picked=picked),
+        )
+        return
+
+    await answer_callback(callback, chosen)
+    await _save_schedule(callback, state, session, scheduler, sorted(picked), lang)
+
+
+@router.callback_query(F.data == CB.SCHED_UNDO)
+async def undo_pick(callback: CallbackQuery, state: FSMContext, lang: str = "uz") -> None:
+    """Step back one choice.
+
+    Covers both halves of a slot: an unfinished hour is dropped first, otherwise
+    the last completed time goes. Without this the only way out of a mistyped
+    slot is to cancel and start the whole schedule again.
+    """
+    data = await state.get_data()
+    picked: list[str] = list(data.get("picked", []))
+    expected = int(data.get("expected_count", 1))
+
+    if data.get("pending_hour") is not None:
+        await state.update_data(pending_hour=None)
+    elif picked:
+        picked.pop()
+        await state.update_data(picked=picked)
+
+    await answer_callback(callback)
+    await safe_edit(
+        callback,
+        _picker_prompt(lang, picked, expected),
+        reply_markup=hour_keyboard(lang, index=len(picked), total=expected, picked=picked),
+    )
+
+
+def _picker_prompt(language: str, picked: list[str], expected: int) -> str:
+    """Text above the hour grid, showing progress."""
+    chosen = ", ".join(picked) if picked else t("common.none", language)
+    return t(
+        "scheduler.pick_hour",
+        language,
+        current=len(picked) + 1,
+        total=expected,
+        chosen=chosen,
+    )
+
+
+async def _save_schedule(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    scheduler: QuizScheduler,
+    times: list[str],
+    language: str,
+) -> None:
+    """Persist the picked times and reload the scheduler."""
+    parsed = [time(int(value[:2]), int(value[3:])) for value in times]
+
+    schedule = ScheduleRepository(session)
+    slots = await schedule.replace_all(parsed)
+    await SettingsRepository(session).set_int(SettingKey.POSTS_PER_DAY, len(slots))
+
+    labels = ", ".join(slot.label for slot in slots)
+    await EventRepository(session).record(
+        EventType.SCHEDULE_UPDATED,
+        f"Schedule set to {labels}",
+        payload={"times": [slot.label for slot in slots]},
+    )
+
+    # Commit before reloading: the scheduler opens its own session to read the
+    # slots, and would otherwise see the pre-update schedule.
+    await session.commit()
+    await scheduler.reload()
+
+    await state.clear()
+    await safe_edit(
+        callback,
+        t(
+            "scheduler.saved",
+            language,
+            times=labels,
+            timezone=str(scheduler.timezone),
+        )
+        + "\n\n"
+        + t("scheduler.next_run", language, time=scheduler.format_next_run()),
+        reply_markup=back_keyboard(language, CB.SCHED),
     )

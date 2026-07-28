@@ -72,7 +72,6 @@ class Application:
         self.quiz = QuizService(
             self.bot,
             self.media,
-            send_as_document=settings.send_images_as_document,
             content_language_default=settings.default_language,
         )
         self.branding = BrandingService(self.bot, settings.brand_logo)
@@ -129,7 +128,6 @@ class Application:
                 "branding": self.branding,
                 "timezone": self.settings.timezone,
                 "log_dir": self.settings.log_dir,
-                "send_as_document": self.settings.send_images_as_document,
             }
         )
 

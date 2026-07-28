@@ -89,7 +89,11 @@
     "edit_batch": "🔢 Bir martada nechta test",
     "batch_prompt": "🔢 <b>Bir yuborishda nechta test?</b>\n\nHozirgi qiymat: <b>{current} ta</b>\n\nHar bir belgilangan vaqtda shuncha test ketma-ket yuboriladi.\nRasmli test 2 ta xabar bo'lgani uchun eng ko'pi 10 ta.",
     "batch_saved": "Saqlandi: bir martada {count} ta test",
-    "batch_line": "🔢 Bir martada: <b>{count} ta</b> (kuniga jami {total} ta)"
+    "batch_line": "🔢 Bir martada: <b>{count} ta</b> (kuniga jami {total} ta)",
+    "pick_hour": "🕐 <b>{current}-vaqt / {total} ta</b>\n\nSoatni tanlang:\n\nTanlangan: <b>{chosen}</b>",
+    "pick_minute": "🕐 Soat <b>{hour}</b>\n\nDaqiqani tanlang:",
+    "already_picked": "{time} allaqachon tanlangan",
+    "undo_last": "↩️ Oxirgisini bekor qilish"
   },
   "stats": {
     "title": "📊 <b>Statistika</b>",
