@@ -13,7 +13,7 @@ instead of dying quietly.
 ## Contents
 
 - [What it does](#what-it-does)
-- [Question sources: read this first](#question-sources-read-this-first)
+- [Where the questions come from](#where-the-questions-come-from)
 - [Quick start (Docker)](#quick-start-docker)
 - [Environment variables](#environment-variables)
 - [Running locally](#running-locally)
@@ -37,45 +37,61 @@ instead of dying quietly.
 | **Schedules** | 1–3 posts per day at times you choose, always in `Asia/Tashkent` regardless of server timezone |
 | **Never repeats** | Enforced by a database constraint, not by application logic |
 | **Cycles** | When every question has been posted, a new cycle starts automatically |
-| **Multi-channel** | One post fans out to every connected channel |
+| **Multi-channel** | One post fans out to every channel you have connected |
 | **Bilingual** | Uzbek and Russian interface, chosen per user |
-| **Admin-only** | Management panel gated on `ADMIN_IDS`; everyone else is refused |
+| **Multi-tenant** | Anyone can connect their own channel and run their own schedule over the shared bank |
 | **Survives restarts** | Schedule, cycle progress and pause state all live in PostgreSQL |
 
 ---
 
-## Question sources: read this first
+## Where the questions come from
 
-The original specification named `avtotestu.uz` as the source and expected a
-scraper to pull ~1225 questions from it. **That is not something this project
-does, and the reason matters.**
+Two public sources ship as built-in importers, reachable from the panel under
+**Testlarni yangilash**:
 
-Checking the site directly:
+| Source | Questions | Images | Explanations |
+|---|---|---|---|
+| `avtotestu.uz` | ~1250 | ~59% | every one |
+| `e-avtomaktab.uz` | ~330 | ~48% | none |
 
-- It is a React single-page app backed by Supabase. Questions arrive through an
-  authenticated API — there are no per-question pages to crawl.
-- **Only variant 1 of 63 is free.** The site states plainly:
-  *"Bepul: faqat 1-variant. Qolganlari PRO bilan"* and
-  *"Mavzular faqat PRO obunachilar uchun."*
-- So essentially the whole bank sits behind a **paid PRO subscription**.
+Neither needs a browser engine, and neither touches anything behind a login.
 
-`robots.txt` permits crawling public pages, but that does not extend to content
-behind a paywall. Extracting all 1225 questions would mean either bypassing their
-access controls or using a paid account to bulk-copy their product and republish
-it free to a public channel — which would undercut the business whose content it
-is. So the scraper was replaced with something better for you anyway:
+`avtotestu.uz` is a single-page app, so the obvious read is "JavaScript-rendered,
+needs Playwright". It is not: the app fetches `/data/variants/v{n}.json` for each
+of its published tickets, and those static files *are* the bank — text in three
+languages, the correct answer flagged per option, an image filename and a written
+explanation.
 
-**The bot is agnostic about where questions come from.** It imports from JSON,
-CSV or XLSX, and adding another provider means implementing one class. Nothing in
-the scheduler, poll builder or database changes.
+`e-avtomaktab.uz` renders server-side and embeds its question set as a JavaScript
+literal on the exam page. Reading that literal rather than the DOM matters: the
+`IsCorrect` flag appears nowhere in the rendered markup, so scraping the visible
+page yields questions with no correct answer and therefore no quiz poll.
 
-If you want to use `avtotestu.uz` content, contact them about a licence or API
-agreement — with access granted, writing a source for it is a small job. See
+Both importers are polite — one request per ticket, a pause between them — and
+idempotent, so pressing **Testlarni yangilash** again adds only what is new.
+
+Three sites were checked and deliberately **not** connected:
+
+- **`24pdd.uz`** publishes the traffic law, road-sign articles and first-aid
+  guidance. No options, no correct answers — a reference site, not a test bank.
+- **`avtoimtihon.uz`** is a Next.js app whose ticket data is not in its route
+  chunks and has no reachable API. It advertises the same official bank, so
+  reverse-engineering it would buy questions `avtotestu.uz` already provides.
+- The Softonic link is a download page for an Android app.
+
+`avtotestu.uz` also ships a Supabase key in its bundle, but the tables behind it
+are `profiles`, `reviews` and `test_results` — other people's personal data,
+which this project does not read.
+
+### Other formats
+
+The bot is agnostic about where questions come from: it also imports JSON, CSV
+and XLSX, and adding a provider means implementing one class with no change to
+the scheduler, poll builder or database. See
 [Adding a new source](#adding-a-new-source).
 
-A 20-question sample bank ships in `data/sample_questions.json` so you can verify
-the whole pipeline immediately. **Delete it once you load real content**, or its
-questions will keep appearing in the rotation.
+A 20-question sample ships in `data/sample_questions.json` for verifying the
+pipeline before importing anything real.
 
 ---
 
@@ -142,7 +158,6 @@ Every value the bot reads. Only the first two have no working default.
 | `SCHEDULER_MISFIRE_GRACE` | `3600` | Seconds a missed run may still fire late. |
 | `DEFAULT_LANGUAGE` | `uz` | Interface language before a user chooses. |
 | `MEDIA_ROOT` | `media/images` | Where question images are cached. |
-| `SEND_IMAGES_AS_DOCUMENT` | `false` | `true` sends images uncompressed (original quality, but not inline). |
 | `MAX_RETRIES` | `3` | Attempts for network operations. |
 | `RETRY_BACKOFF_SECONDS` | `2.0` | Base backoff between attempts. |
 | `NOTIFY_ADMINS_ON_ERROR` | `true` | Push error alerts to admins over Telegram. |
@@ -157,11 +172,9 @@ Settings are validated at start-up. A malformed `BOT_TOKEN`, a sync database
 driver or an unknown timezone stops the process immediately with a readable
 message rather than failing at the first scheduled post.
 
-> **On image quality.** `SEND_IMAGES_AS_DOCUMENT=true` sends the original file
-> with no re-encoding, which is what "do not lose image quality" requires — but
-> Telegram then shows it as an attachment rather than rendering it inline. For
-> road-sign images the default (`false`) usually reads better in a channel. Try
-> both and pick.
+> **On images.** An illustrated question goes out as a *single* message: the
+> Bot API accepts media on a poll, so the picture, the question and the
+> options arrive together rather than as a photo followed by a separate poll.
 
 ---
 
