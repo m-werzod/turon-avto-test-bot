@@ -48,7 +48,6 @@ jobs:
 
       - name: Mypy
         run: mypy bot/
-        continue-on-error: true
 
       - name: Tests
         run: pytest -q
