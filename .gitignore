@@ -43,3 +43,7 @@ backups/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---- Local scratch databases --------------------------------------------
+*.db
+*.sqlite3
