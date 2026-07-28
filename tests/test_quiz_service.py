@@ -216,3 +216,64 @@ class TestSendNext:
         asked = [poll["question"] for poll in bot.polls]
         assert len(asked) == len(question_bank)
         assert len(set(asked)) == len(question_bank), "a question was published twice"
+
+
+class TestSendBatch:
+    """Publishing several questions at one scheduled time."""
+
+    async def _add_channel(self, session: AsyncSession, chat_id: int) -> None:
+        await ChannelRepository(session).upsert(
+            chat_id=chat_id, username=f"c{abs(chat_id)}", title="Channel"
+        )
+
+    async def test_sends_the_requested_number(
+        self, session: AsyncSession, question_bank, quiz_service
+    ) -> None:
+        service, bot = quiz_service
+        await self._add_channel(session, -301)
+
+        reports = await service.send_batch(session, 5, pause_between=0)
+
+        assert len(reports) == 5
+        assert len(bot.polls) == 5
+
+    async def test_questions_within_a_batch_are_all_different(
+        self, session: AsyncSession, question_bank, quiz_service
+    ) -> None:
+        """The no-repeat guarantee has to hold inside a batch too."""
+        service, _ = quiz_service
+        await self._add_channel(session, -302)
+
+        reports = await service.send_batch(session, 8, pause_between=0)
+
+        question_ids = [report.question_id for report in reports]
+        assert len(set(question_ids)) == len(question_ids)
+
+    async def test_a_batch_larger_than_the_cycle_rolls_into_the_next_one(
+        self, session: AsyncSession, question_bank, quiz_service
+    ) -> None:
+        """Exhausting the cycle mid-batch starts the next one and carries on.
+
+        Running out is not an error: the spec calls for a fresh cycle once every
+        question has been used, so a batch spanning that boundary keeps sending
+        rather than stopping short.
+        """
+        service, bot = quiz_service
+        await self._add_channel(session, -303)
+
+        reports = await service.send_batch(session, 30, pause_between=0)
+
+        assert len(reports) == 30
+        assert len(bot.polls) == 30
+        assert sum(report.cycle_rolled for report in reports) == 1, "cycle should roll exactly once"
+
+    async def test_zero_sends_nothing(
+        self, session: AsyncSession, question_bank, quiz_service
+    ) -> None:
+        service, bot = quiz_service
+        await self._add_channel(session, -304)
+
+        reports = await service.send_batch(session, 0, pause_between=0)
+
+        assert reports == []
+        assert bot.polls == []

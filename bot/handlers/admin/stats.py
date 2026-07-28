@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models.quiz_post import PostTrigger
-from bot.database.repositories import CycleExhaustedError
+from bot.database.repositories import CycleExhaustedError, SettingsRepository
 from bot.handlers.helpers import answer_callback, safe_edit
 from bot.keyboards import CB, back_keyboard, confirm_keyboard, stats_keyboard
 from bot.locales.i18n import t
@@ -111,13 +111,15 @@ async def send_now(
     quiz_service: QuizService,
     lang: str = "uz",
 ) -> None:
-    """Publish the next question immediately, ignoring the schedule."""
+    """Publish the next batch immediately, ignoring the schedule."""
     await answer_callback(callback)
+
+    batch_size = await SettingsRepository(session).questions_per_send()
     await safe_edit(callback, t("send_now.sending", lang))
 
     try:
-        report = await quiz_service.send_next(
-            session, trigger=PostTrigger.MANUAL, admin_language=lang
+        reports = await quiz_service.send_batch(
+            session, batch_size, trigger=PostTrigger.MANUAL, admin_language=lang
         )
     except NoChannelsError:
         await safe_edit(callback, t("send_now.no_channels", lang), reply_markup=back_keyboard(lang))
@@ -138,27 +140,44 @@ async def send_now(
         )
         return
 
-    if report.fully_failed:
-        text = t(
-            "send_now.failed",
-            lang,
-            reason=escape_html(report.error_summary()),
+    if not reports:
+        # send_batch swallows an exhausted bank so earlier posts in the batch
+        # survive; with nothing sent at all the cause is an empty bank.
+        await safe_edit(
+            callback,
+            t("send_now.no_questions", lang, update=t("menu.update_tests", lang)),
+            reply_markup=back_keyboard(lang),
         )
-    elif report.failed:
+        return
+
+    failed_reports = [report for report in reports if report.fully_failed]
+    last = reports[-1]
+
+    if len(failed_reports) == len(reports):
+        text = t("send_now.failed", lang, reason=escape_html(last.error_summary()))
+    elif failed_reports or any(report.failed for report in reports):
         text = t(
             "send_now.partial",
             lang,
-            ok=report.succeeded,
-            failed=report.failed,
-            errors=escape_html(report.error_summary()),
+            ok=sum(report.succeeded for report in reports),
+            failed=sum(report.failed for report in reports),
+            errors=escape_html(last.error_summary()),
         )
-    else:
+    elif len(reports) == 1:
         text = t(
             "send_now.success",
             lang,
-            question_id=report.question_id,
-            channels=report.succeeded,
-            cycle=report.cycle_number,
+            question_id=last.question_id,
+            channels=last.succeeded,
+            cycle=last.cycle_number,
+        )
+    else:
+        text = t(
+            "send_now.success_batch",
+            lang,
+            count=len(reports),
+            channels=last.succeeded,
+            cycle=last.cycle_number,
         )
 
     await safe_edit(callback, text, reply_markup=back_keyboard(lang))

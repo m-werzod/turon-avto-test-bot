@@ -9,6 +9,11 @@ from bot.database.repositories.base import BaseRepository
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
+#: Upper bound for one batch. Telegram rate-limits a channel at roughly 20
+#: messages a minute and an illustrated question costs two, so ten is the most
+#: that reliably lands back-to-back.
+MAX_QUESTIONS_PER_SEND = 10
+
 
 class SettingsRepository(BaseRepository[Setting]):
     """Key/value settings with typed getters and setters.
@@ -74,6 +79,22 @@ class SettingsRepository(BaseRepository[Setting]):
     async def set_scheduler_paused(self, paused: bool) -> None:
         """Suspend or resume automatic posting."""
         await self.set_bool(SettingKey.SCHEDULER_PAUSED, paused)
+
+    async def questions_per_send(self) -> int:
+        """How many questions go out at each scheduled time.
+
+        Clamped on read as well as on write: the value reaches the poll loop
+        directly, and a hand-edited row must not be able to fire off hundreds of
+        posts at once.
+        """
+        value = await self.get_int(SettingKey.QUESTIONS_PER_SEND, default=1)
+        return max(1, min(value, MAX_QUESTIONS_PER_SEND))
+
+    async def set_questions_per_send(self, count: int) -> None:
+        """Set how many questions go out at each scheduled time."""
+        await self.set_int(
+            SettingKey.QUESTIONS_PER_SEND, max(1, min(count, MAX_QUESTIONS_PER_SEND))
+        )
 
     async def skip_weekends(self) -> bool:
         """Whether Saturday and Sunday posts are suppressed."""

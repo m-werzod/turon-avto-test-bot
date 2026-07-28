@@ -1,9 +1,11 @@
 """Inline keyboards used by the admin panel and the language picker."""
 
 from bot.keyboards.inline import (
+    BATCH_SIZE_OPTIONS,
     CB,
     back_keyboard,
     backup_keyboard,
+    batch_size_keyboard,
     channels_keyboard,
     confirm_keyboard,
     import_keyboard,
@@ -17,9 +19,11 @@ from bot.keyboards.inline import (
 )
 
 __all__ = [
+    "BATCH_SIZE_OPTIONS",
     "CB",
     "back_keyboard",
     "backup_keyboard",
+    "batch_size_keyboard",
     "channels_keyboard",
     "confirm_keyboard",
     "import_keyboard",

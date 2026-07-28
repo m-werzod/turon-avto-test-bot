@@ -34,6 +34,7 @@ from bot.database.repositories import (
     QuestionRepository,
     SettingsRepository,
 )
+from bot.database.repositories.cycle_repo import CycleExhaustedError
 from bot.locales.i18n import t
 from bot.services.media_service import MediaService
 from bot.utils.logging import get_logger
@@ -268,6 +269,53 @@ class QuizService:
             return True
         message = str(error).lower()
         return any(marker in message for marker in _ACCESS_ERROR_MARKERS)
+
+    async def send_batch(
+        self,
+        session: AsyncSession,
+        count: int,
+        *,
+        trigger: PostTrigger = PostTrigger.SCHEDULED,
+        admin_language: str = "uz",
+        pause_between: float = 2.0,
+    ) -> list[SendReport]:
+        """Publish ``count`` questions back to back.
+
+        Each question is claimed and delivered in full before the next begins, so
+        a failure part-way through leaves the earlier posts standing and only the
+        unsent remainder back in the pool.
+
+        Args:
+            session: Open session; the caller owns the transaction.
+            count: How many questions to publish. Values below one send nothing.
+            trigger: What prompted this send.
+            admin_language: Language for text embedded in the messages.
+            pause_between: Seconds to wait between questions. An illustrated
+                question is two messages, so a batch of ten is twenty in a row —
+                enough to trip Telegram's per-channel rate limit without a gap.
+
+        Returns:
+            One report per question actually attempted, in send order. Stops
+            early and returns what it has if the bank runs dry.
+        """
+        reports: list[SendReport] = []
+
+        for index in range(max(0, count)):
+            if index:
+                await asyncio.sleep(pause_between)
+            try:
+                report = await self.send_next(
+                    session, trigger=trigger, admin_language=admin_language
+                )
+            except CycleExhaustedError:
+                # Nothing left to claim. Whatever already went out stands.
+                logger.warning(
+                    "Question bank exhausted after %d of %d in this batch", len(reports), count
+                )
+                break
+            reports.append(report)
+
+        return reports
 
     async def send_next(
         self,

@@ -85,7 +85,11 @@
     "already_running": "Avtomatik yuborish allaqachon ishlamoqda.",
     "edit_times": "✏️ Vaqtlarni o'zgartirish",
     "skip_weekends": "Dam olish kunlari: {status}",
-    "toggle_weekends": "📅 Dam olish kunlarini almashtirish"
+    "toggle_weekends": "📅 Dam olish kunlarini almashtirish",
+    "edit_batch": "🔢 Bir martada nechta test",
+    "batch_prompt": "🔢 <b>Bir yuborishda nechta test?</b>\n\nHozirgi qiymat: <b>{current} ta</b>\n\nHar bir belgilangan vaqtda shuncha test ketma-ket yuboriladi.\nRasmli test 2 ta xabar bo'lgani uchun eng ko'pi 10 ta.",
+    "batch_saved": "Saqlandi: bir martada {count} ta test",
+    "batch_line": "🔢 Bir martada: <b>{count} ta</b> (kuniga jami {total} ta)"
   },
   "stats": {
     "title": "📊 <b>Statistika</b>",
@@ -103,7 +107,8 @@
     "partial": "⚠️ Test qisman yuborildi.\n\n• Muvaffaqiyatli: {ok}\n• Xatolik: {failed}\n\n{errors}",
     "failed": "❌ Test yuborilmadi.\n\n{reason}",
     "no_channels": "❌ Avval kamida bitta kanal ulang.",
-    "no_questions": "❌ Bazada testlar yo'q.\n\n«{update}» tugmasi orqali testlarni yuklang."
+    "no_questions": "❌ Bazada testlar yo'q.\n\n«{update}» tugmasi orqali testlarni yuklang.",
+    "success_batch": "✅ <b>{count} ta test yuborildi</b>\n\nKanallar: {channels} ta\nSikl: #{cycle}"
   },
   "import": {
     "title": "🔄 <b>Testlarni yangilash</b>",

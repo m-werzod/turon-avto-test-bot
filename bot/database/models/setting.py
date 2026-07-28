@@ -22,6 +22,7 @@ class SettingKey:
 
     SCHEDULER_PAUSED = "scheduler_paused"
     POSTS_PER_DAY = "posts_per_day"
+    QUESTIONS_PER_SEND = "questions_per_send"
     SKIP_WEEKENDS = "skip_weekends"
     CONTENT_LANGUAGE = "content_language"
     LAST_IMPORT_AT = "last_import_at"
@@ -32,6 +33,7 @@ class SettingKey:
     DEFAULTS: dict[str, str] = {  # noqa: RUF012 - simple constant mapping
         SCHEDULER_PAUSED: "false",
         POSTS_PER_DAY: "3",
+        QUESTIONS_PER_SEND: "1",
         SKIP_WEEKENDS: "false",
         CONTENT_LANGUAGE: "uz",
     }

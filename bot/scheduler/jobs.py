@@ -53,16 +53,16 @@ async def run_scheduled_post(
     *,
     slot_label: str = "",
     trigger: PostTrigger = PostTrigger.SCHEDULED,
-) -> SendReport | None:
-    """Publish one quiz, honouring the pause and weekend settings.
+) -> list[SendReport]:
+    """Publish this slot's quizzes, honouring the pause and weekend settings.
 
     Args:
         context: Injected dependencies.
         slot_label: The ``HH:MM`` slot this run belongs to, for logging.
-        trigger: Recorded on the resulting post.
+        trigger: Recorded on the resulting posts.
 
     Returns:
-        The send report, or ``None`` when the run was skipped or failed.
+        One report per question sent — empty when the run was skipped or failed.
     """
     where = f"scheduler:{slot_label or trigger.value}"
 
@@ -72,16 +72,20 @@ async def run_scheduled_post(
 
             if await settings_repo.is_scheduler_paused():
                 logger.info("Slot %s skipped: scheduler is paused", slot_label)
-                return None
+                return []
 
             if await settings_repo.skip_weekends():
                 weekday = datetime.now(context.timezone).weekday()
                 if weekday >= 5:  # Saturday=5, Sunday=6
                     logger.info("Slot %s skipped: weekend posting is disabled", slot_label)
-                    return None
+                    return []
 
-            report = await context.quiz.send_next(
-                session, trigger=trigger, admin_language=context.admin_language
+            batch_size = await settings_repo.questions_per_send()
+            reports = await context.quiz.send_batch(
+                session,
+                batch_size,
+                trigger=trigger,
+                admin_language=context.admin_language,
             )
 
     except NoChannelsError:
@@ -97,7 +101,7 @@ async def run_scheduled_post(
             "⚠️ Rejadagi test yuborilmadi: birorta kanal ulanmagan.",
             fingerprint="no_channels",
         )
-        return None
+        return []
 
     except CycleExhaustedError as exc:
         logger.error("Slot %s failed: %s", slot_label, exc)
@@ -109,26 +113,27 @@ async def run_scheduled_post(
                 payload={"slot": slot_label},
             )
         await context.notify.notify_error(where, exc, language=context.admin_language)
-        return None
+        return []
 
     except Exception as exc:
         logger.exception("Unhandled error in scheduled post (slot %s)", slot_label)
         await context.notify.notify_error(where, exc, language=context.admin_language)
-        return None
+        return []
 
-    if report.fully_failed:
-        await context.notify.broadcast(
-            f"⚠️ Test hech bir kanalga yuborilmadi.\n\n{report.error_summary()}",
-            fingerprint="all_channels_failed",
-        )
-    elif report.failed:
-        for outcome in report.outcomes:
-            if outcome.access_lost:
-                await context.notify.notify_channel_lost(
-                    outcome.channel, outcome.error or "", language=context.admin_language
-                )
+    for report in reports:
+        if report.fully_failed:
+            await context.notify.broadcast(
+                f"⚠️ Test hech bir kanalga yuborilmadi.\n\n{report.error_summary()}",
+                fingerprint="all_channels_failed",
+            )
+        elif report.failed:
+            for outcome in report.outcomes:
+                if outcome.access_lost:
+                    await context.notify.notify_channel_lost(
+                        outcome.channel, outcome.error or "", language=context.admin_language
+                    )
 
-    return report
+    return reports
 
 
 async def run_maintenance(context: JobContext) -> None:

@@ -14,7 +14,13 @@ from bot.database.models.event_log import EventType
 from bot.database.models.setting import SettingKey
 from bot.database.repositories import EventRepository, ScheduleRepository, SettingsRepository
 from bot.handlers.helpers import answer_callback, safe_edit
-from bot.keyboards import CB, back_keyboard, posts_per_day_keyboard, scheduler_keyboard
+from bot.keyboards import (
+    CB,
+    back_keyboard,
+    batch_size_keyboard,
+    posts_per_day_keyboard,
+    scheduler_keyboard,
+)
 from bot.locales.i18n import t
 from bot.scheduler.scheduler import QuizScheduler
 from bot.states import ScheduleStates
@@ -194,6 +200,36 @@ async def resume_scheduler(
     )
 
 
+@router.callback_query(F.data == CB.SCHED_BATCH)
+async def choose_batch_size(
+    callback: CallbackQuery, session: AsyncSession, lang: str = "uz"
+) -> None:
+    """Offer the batch sizes."""
+    current = await SettingsRepository(session).questions_per_send()
+    await safe_edit(
+        callback,
+        t("scheduler.batch_prompt", lang, current=current),
+        reply_markup=batch_size_keyboard(lang, current),
+    )
+
+
+@router.callback_query(F.data.startswith(f"{CB.SCHED_BATCH_SET}:"))
+async def set_batch_size(
+    callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, lang: str = "uz"
+) -> None:
+    """Persist how many questions go out at each scheduled time."""
+    raw = (callback.data or "").rsplit(":", 1)[-1]
+    try:
+        count = int(raw)
+    except ValueError:
+        await answer_callback(callback, t("errors.generic", lang))
+        return
+
+    await SettingsRepository(session).set_questions_per_send(count)
+    await answer_callback(callback, t("scheduler.batch_saved", lang, count=count))
+    await _render_scheduler(callback, session, scheduler, lang)
+
+
 @router.callback_query(F.data == CB.SCHED_WEEKENDS)
 async def toggle_weekends(
     callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, lang: str = "uz"
@@ -215,6 +251,7 @@ async def _render_scheduler(
     settings_repo = SettingsRepository(session)
     paused = await settings_repo.is_scheduler_paused()
     skip_weekends = await settings_repo.skip_weekends()
+    per_send = await settings_repo.questions_per_send()
     slots = await ScheduleRepository(session).list_enabled()
 
     times = ", ".join(slot.label for slot in slots)
@@ -238,6 +275,7 @@ async def _render_scheduler(
             if next_run and not paused
             else t("scheduler.next_run_unknown", language)
         ),
+        t("scheduler.batch_line", language, count=per_send, total=len(slots) * per_send),
         t(
             "scheduler.skip_weekends",
             language,

@@ -12,6 +12,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.locales.i18n import LANGUAGE_LABELS, SUPPORTED_LANGUAGES, t
 
+#: Batch sizes offered in the panel. Capped at ten by
+#: MAX_QUESTIONS_PER_SEND, which Telegram's per-channel rate limit sets.
+BATCH_SIZE_OPTIONS = (1, 3, 5, 8, 10)
+
 
 class CB:
     """Callback data constants.
@@ -40,6 +44,8 @@ class CB:
     SCHED_PAUSE = "sc:pause"
     SCHED_RESUME = "sc:resume"
     SCHED_WEEKENDS = "sc:wk"
+    SCHED_BATCH = "sc:batch"
+    SCHED_BATCH_SET = "sc:batch:set"  # + ":<n>"
 
     # Content
     STATS = "st"
@@ -135,6 +141,7 @@ def scheduler_keyboard(language: str, *, paused: bool) -> InlineKeyboardMarkup:
     """Scheduler settings."""
     builder = InlineKeyboardBuilder()
     builder.button(text=t("scheduler.edit_times", language), callback_data=CB.SCHED_EDIT)
+    builder.button(text=t("scheduler.edit_batch", language), callback_data=CB.SCHED_BATCH)
     builder.button(text=t("scheduler.toggle_weekends", language), callback_data=CB.SCHED_WEEKENDS)
     if paused:
         builder.button(text=t("menu.resume", language), callback_data=CB.SCHED_RESUME)
@@ -155,6 +162,22 @@ def posts_per_day_keyboard(language: str) -> InlineKeyboardMarkup:
         )
     builder.button(text=t("common.cancel", language), callback_data=CB.SCHED)
     builder.adjust(3, 1)
+    return builder.as_markup()
+
+
+def batch_size_keyboard(language: str, current: int) -> InlineKeyboardMarkup:
+    """How many questions go out at each scheduled time."""
+    builder = InlineKeyboardBuilder()
+    for count in BATCH_SIZE_OPTIONS:
+        # A tick on the active option: without it the panel gives no clue which
+        # of the five is in force.
+        mark = "✅ " if count == current else ""
+        builder.button(
+            text=f"{mark}{count}",
+            callback_data=f"{CB.SCHED_BATCH_SET}:{count}",
+        )
+    builder.button(text=t("common.back", language), callback_data=CB.SCHED)
+    builder.adjust(5, 1)
     return builder.as_markup()
 
 
@@ -223,6 +246,7 @@ def settings_keyboard(language: str) -> InlineKeyboardMarkup:
         text=t("settings.change_content_language", language),
         callback_data=CB.SETTINGS_CONTENT_LANG,
     )
+    builder.button(text=t("scheduler.edit_batch", language), callback_data=CB.SCHED_BATCH)
     builder.button(text=t("scheduler.toggle_weekends", language), callback_data=CB.SCHED_WEEKENDS)
     builder.button(text=t("common.back", language), callback_data=CB.MENU)
     builder.adjust(1)
