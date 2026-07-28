@@ -58,7 +58,7 @@ class StatsService:
         """
         self.timezone = timezone or ZoneInfo("Asia/Tashkent")
 
-    async def collect(self, session: AsyncSession) -> Statistics:
+    async def collect(self, session: AsyncSession, owner_id: int) -> Statistics:
         """Gather every figure the statistics panel displays.
 
         Args:
@@ -68,11 +68,11 @@ class StatsService:
             The snapshot.
         """
         questions = QuestionRepository(session)
-        cycles = CycleRepository(session)
+        cycles = CycleRepository(session, owner_id)
         deliveries = DeliveryRepository(session)
-        channels = ChannelRepository(session)
-        schedule = ScheduleRepository(session)
-        settings_repo = SettingsRepository(session)
+        channels = ChannelRepository(session, owner_id)
+        schedule = ScheduleRepository(session, owner_id)
+        settings_repo = SettingsRepository(session, owner_id)
 
         stats = Statistics()
 
@@ -91,17 +91,17 @@ class StatsService:
                 remaining = await cycles.count_remaining(cycle.id)
             stats.cycle_remaining = remaining
 
-        stats.sent_total = await deliveries.count_sent()
-        stats.failed_total = await deliveries.count_failed()
+        stats.sent_total = await deliveries.count_sent(owner_id)
+        stats.failed_total = await deliveries.count_failed(owner_id)
         today = datetime.now(self.timezone).date()
-        stats.sent_today = await deliveries.count_sent_on(today, self.timezone)
+        stats.sent_today = await deliveries.count_sent_on(today, self.timezone, owner_id)
 
         stats.channels = [channel.display_name for channel in await channels.list_active()]
 
         stats.scheduler_paused = await settings_repo.is_scheduler_paused()
         stats.schedule_times = [slot.label for slot in await schedule.list_enabled()]
 
-        last = await deliveries.last_sent()
+        last = await deliveries.last_sent(owner_id)
         if last is not None:
             stats.last_sent_at = last.sent_at
             question = last.post.question if last.post else None

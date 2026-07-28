@@ -5,16 +5,16 @@ from __future__ import annotations
 from datetime import time
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Index, Time
+from sqlalchemy import Boolean, Index, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from bot.database.base import Base, IntPrimaryKeyMixin, TimestampMixin
+from bot.database.base import Base, IntPrimaryKeyMixin, OwnerMixin, TimestampMixin
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     pass
 
 
-class ScheduleSlot(IntPrimaryKeyMixin, TimestampMixin, Base):
+class ScheduleSlot(IntPrimaryKeyMixin, OwnerMixin, TimestampMixin, Base):
     """One time of day at which a quiz is published.
 
     The admin picks one, two or three slots; each is stored as a naive local time
@@ -29,13 +29,18 @@ class ScheduleSlot(IntPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "schedule_slots"
 
     #: Wall-clock time in the configured timezone, e.g. 08:00.
-    run_at: Mapped[time] = mapped_column(Time(timezone=False), nullable=False, unique=True)
+    run_at: Mapped[time] = mapped_column(Time(timezone=False), nullable=False, index=True)
 
     is_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
 
-    __table_args__ = (Index("ix_schedule_slots_enabled_run_at", "is_enabled", "run_at"),)
+    __table_args__ = (
+        Index("ix_schedule_slots_enabled_run_at", "is_enabled", "run_at"),
+        # Two identical slots for one owner would post the same batch twice at
+        # the same instant. Different owners may of course share a time.
+        UniqueConstraint("owner_id", "run_at", name="owner_slot_time"),
+    )
 
     @property
     def label(self) -> str:

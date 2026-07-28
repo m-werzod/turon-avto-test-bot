@@ -8,7 +8,11 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models.event_log import EventType
-from bot.database.repositories import ChannelRepository, EventRepository
+from bot.database.repositories import (
+    ChannelAlreadyConnectedError,
+    ChannelRepository,
+    EventRepository,
+)
 from bot.handlers.helpers import answer_callback, safe_edit
 from bot.keyboards import CB, back_keyboard, channels_keyboard
 from bot.locales.i18n import t
@@ -24,12 +28,16 @@ router = Router(name="admin-channels")
 
 @router.callback_query(F.data == CB.CHANNELS)
 async def show_channels(
-    callback: CallbackQuery, state: FSMContext, session: AsyncSession, lang: str = "uz"
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    owner_id: int,
+    lang: str = "uz",
 ) -> None:
     """List connected channels."""
     await state.clear()
     await answer_callback(callback)
-    await _render_channel_list(callback, session, lang)
+    await _render_channel_list(callback, session, owner_id, lang)
 
 
 @router.callback_query(F.data == CB.CHANNEL_ADD)
@@ -47,6 +55,7 @@ async def receive_channel(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     channel_service: ChannelService,
     lang: str = "uz",
 ) -> None:
@@ -76,13 +85,30 @@ async def receive_channel(
         )
         return
 
-    channels = ChannelRepository(session)
-    channel, created = await channels.upsert(
-        chat_id=info.chat_id,
-        username=info.username,
-        title=info.title,
-        added_by=message.from_user.id if message.from_user else None,
-    )
+    channels = ChannelRepository(session, owner_id)
+    try:
+        channel, created = await channels.upsert(
+            chat_id=info.chat_id,
+            username=info.username,
+            title=info.title,
+            added_by=message.from_user.id if message.from_user else None,
+        )
+    except ChannelAlreadyConnectedError:
+        # Somebody else already drives this chat. Say so plainly: the alternative
+        # is a stack trace for what is an ordinary situation once the bot has
+        # more than one user.
+        await state.clear()
+        await status.edit_text(
+            t("channel.already_owned", lang, title=escape_html(info.title)),
+            reply_markup=back_keyboard(lang, CB.CHANNELS),
+            parse_mode="HTML",
+        )
+        logger.info(
+            "User %d tried to connect chat %d, already owned by another user",
+            owner_id,
+            info.chat_id,
+        )
+        return
 
     await EventRepository(session).record(
         EventType.CHANNEL_CONNECTED,
@@ -109,7 +135,9 @@ async def receive_channel(
 
 
 @router.callback_query(F.data.startswith(f"{CB.CHANNEL_REMOVE}:"))
-async def remove_channel(callback: CallbackQuery, session: AsyncSession, lang: str = "uz") -> None:
+async def remove_channel(
+    callback: CallbackQuery, session: AsyncSession, owner_id: int, lang: str = "uz"
+) -> None:
     """Stop posting to a channel.
 
     Deactivates rather than deletes, so the delivery history and statistics that
@@ -120,7 +148,7 @@ async def remove_channel(callback: CallbackQuery, session: AsyncSession, lang: s
         await answer_callback(callback, t("common.error", lang), alert=True)
         return
 
-    channels = ChannelRepository(session)
+    channels = ChannelRepository(session, owner_id)
     channel = await channels.get(int(raw_id))
     if channel is None:
         await answer_callback(callback, t("common.error", lang), alert=True)
@@ -135,15 +163,15 @@ async def remove_channel(callback: CallbackQuery, session: AsyncSession, lang: s
     )
 
     await answer_callback(callback, t("channel.removed", lang, name=name))
-    await _render_channel_list(callback, session, lang)
+    await _render_channel_list(callback, session, owner_id, lang)
     logger.info("Channel %s deactivated", name)
 
 
 async def _render_channel_list(
-    callback: CallbackQuery, session: AsyncSession, language: str
+    callback: CallbackQuery, session: AsyncSession, owner_id: int, language: str
 ) -> None:
     """Draw the channel list with its keyboard."""
-    channels = await ChannelRepository(session).list_active()
+    channels = await ChannelRepository(session, owner_id).list_active()
 
     if channels:
         lines = [t("channel.current", language)]

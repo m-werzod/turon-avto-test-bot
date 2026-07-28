@@ -21,19 +21,30 @@ router = Router(name="admin-menu")
 
 @router.message(Command("admin", "panel", "menu"))
 async def open_panel(
-    message: Message, state: FSMContext, session: AsyncSession, lang: str = "uz"
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    owner_id: int,
+    lang: str = "uz",
+    is_admin: bool = False,
 ) -> None:
     """Open the admin panel from a command."""
     await state.clear()
-    paused = await SettingsRepository(session).is_scheduler_paused()
+    paused = await SettingsRepository(session, owner_id).is_scheduler_paused()
     await message.answer(
-        t("menu.title", lang), reply_markup=main_menu_keyboard(lang, paused=paused)
+        t("menu.title", lang),
+        reply_markup=main_menu_keyboard(lang, paused=paused, is_operator=is_admin),
     )
 
 
 @router.callback_query(F.data == CB.MENU)
 async def show_menu(
-    callback: CallbackQuery, state: FSMContext, session: AsyncSession, lang: str = "uz"
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    owner_id: int,
+    lang: str = "uz",
+    is_admin: bool = False,
 ) -> None:
     """Return to the main menu, cancelling any flow in progress.
 
@@ -42,10 +53,12 @@ async def show_menu(
     waiting for input.
     """
     await state.clear()
-    paused = await SettingsRepository(session).is_scheduler_paused()
+    paused = await SettingsRepository(session, owner_id).is_scheduler_paused()
     await answer_callback(callback)
     await safe_edit(
-        callback, t("menu.title", lang), reply_markup=main_menu_keyboard(lang, paused=paused)
+        callback,
+        t("menu.title", lang),
+        reply_markup=main_menu_keyboard(lang, paused=paused, is_operator=is_admin),
     )
 
 
@@ -57,11 +70,17 @@ async def ignore_noop(callback: CallbackQuery) -> None:
 
 @router.message(Command("cancel"))
 async def cancel_flow(
-    message: Message, state: FSMContext, session: AsyncSession, lang: str = "uz"
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    owner_id: int,
+    lang: str = "uz",
+    is_admin: bool = False,
 ) -> None:
     """Abort whatever multi-step flow is running."""
     await state.clear()
-    paused = await SettingsRepository(session).is_scheduler_paused()
+    paused = await SettingsRepository(session, owner_id).is_scheduler_paused()
     await message.answer(
-        t("common.cancelled", lang), reply_markup=main_menu_keyboard(lang, paused=paused)
+        t("common.cancelled", lang),
+        reply_markup=main_menu_keyboard(lang, paused=paused, is_operator=is_admin),
     )

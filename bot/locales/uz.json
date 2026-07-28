@@ -16,7 +16,8 @@
     "error": "⚠️ Xatolik yuz berdi. Qayta urinib ko'ring.",
     "unknown_command": "Bunday buyruq yo'q. /start ni bosing.",
     "not_admin": "⛔️ Sizda bu bo'limga ruxsat yo'q.",
-    "session_expired": "Amal muddati tugadi. Menyudan qaytadan boshlang."
+    "session_expired": "Amal muddati tugadi. Menyudan qaytadan boshlang.",
+    "not_operator": "⛔️ Bu bo'lim faqat bot egasi uchun.\n\nO'z kanalingizni ulash, jadval qo'yish va statistikani ko'rish sizga ochiq."
   },
   "start": {
     "choose_language": "Tilni tanlang / Выберите язык",
@@ -60,7 +61,8 @@
     "not_a_channel": "❌ Bu kanal emas.\n\nFaqat kanallarni ulash mumkin (guruh yoki shaxsiy chat emas).",
     "remove": "🗑 O'chirish",
     "removed": "✅ Kanal ro'yxatdan olib tashlandi: {name}",
-    "add_new": "➕ Yangi kanal ulash"
+    "add_new": "➕ Yangi kanal ulash",
+    "already_owned": "⚠️ <b>{title}</b> kanali boshqa foydalanuvchi tomonidan ulangan.\n\nBir kanalga faqat bitta hisob test yubora oladi. Agar bu sizning kanalingiz bo'lsa, uni ulagan odamdan uzishni so'rang."
   },
   "scheduler": {
     "title": "⏰ <b>Jadval sozlamalari</b>",

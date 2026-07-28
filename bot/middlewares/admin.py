@@ -1,4 +1,4 @@
-"""Admin-only access control."""
+"""Operator-only access control."""
 
 from __future__ import annotations
 
@@ -14,12 +14,16 @@ from bot.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-class AdminOnlyMiddleware(BaseMiddleware):
-    """Blocks every non-admin from the routers it is attached to.
+class OperatorOnlyMiddleware(BaseMiddleware):
+    """Blocks everyone but the installation's operators.
 
-    Attached to the admin router rather than checked inside each handler: a
-    per-handler check is one forgotten line away from exposing the panel, whereas
-    a router-level gate is impossible to skip for a new handler added later.
+    The panel itself is open — every user runs their own channels and schedule.
+    This gates only what acts installation-wide: refreshing the shared question
+    bank, reading server logs, taking backups.
+
+    Attached to a router rather than checked inside each handler: a per-handler
+    check is one forgotten line away from exposing the feature, whereas a
+    router-level gate is impossible to skip for a handler added later.
     """
 
     def __init__(self, admin_ids: frozenset[int]) -> None:
@@ -37,18 +41,18 @@ class AdminOnlyMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         language = data.get("lang", "uz")
-        logger.warning(
-            "Denied admin access to user %s (@%s)",
+        logger.info(
+            "Denied operator-only feature to user %s (@%s)",
             getattr(user, "id", "unknown"),
             getattr(user, "username", None),
             extra={"user_id": getattr(user, "id", None)},
         )
 
-        # Answer rather than ignore, so a legitimate admin who mistyped their id
-        # in .env gets a clear signal instead of silence.
+        # Answer rather than ignore, so an operator who mistyped their id in
+        # .env gets a clear signal instead of silence.
         if isinstance(event, CallbackQuery):
-            await event.answer(t("common.not_admin", language), show_alert=True)
+            await event.answer(t("common.not_operator", language), show_alert=True)
         elif isinstance(event, Message):
-            await event.answer(t("common.not_admin", language))
+            await event.answer(t("common.not_operator", language))
 
         return None

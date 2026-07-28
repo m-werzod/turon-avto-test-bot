@@ -61,6 +61,25 @@ class IntPrimaryKeyMixin:
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
 
+class OwnerMixin:
+    """Ties a row to the Telegram user who owns it.
+
+    The bot is multi-tenant: anyone can connect their own channel and run their
+    own schedule over the shared question bank. Every row that belongs to one
+    person rather than to the installation carries this column, and every query
+    for such rows filters on it — an unscoped query would leak one user's
+    channels, progress or settings into another's panel.
+
+    Stored as the raw Telegram id rather than a foreign key to ``bot_users``, so
+    a row survives its owner being purged and no lookup is needed to scope a
+    query.
+    """
+
+    owner_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True, doc="Telegram id of the owning user"
+    )
+
+
 class TimestampMixin:
     """``created_at`` / ``updated_at`` maintained by the database.
 

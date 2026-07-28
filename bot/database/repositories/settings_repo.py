@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models.setting import Setting, SettingKey
 from bot.database.repositories.base import BaseRepository
@@ -20,22 +21,60 @@ class SettingsRepository(BaseRepository[Setting]):
 
     Values are stored as text and coerced on read. Callers never touch raw rows,
     so a malformed value cannot propagate past this boundary.
+
+    Settings are read in three layers: the owner's own row, then the
+    installation-wide row, then the declared default. That is what lets one
+    operator pause their schedule without touching anybody else's, while a value
+    the installation sets — when the question bank was last refreshed — is
+    answered once for everyone.
+
+    Unlike the other per-user repositories this one does *not* extend
+    :class:`OwnedRepository`, because here a row with no owner is a legitimate
+    global value rather than a scoping bug.
     """
 
     model = Setting
 
+    def __init__(self, session: AsyncSession, owner_id: int | None = None) -> None:
+        """Bind the repository, optionally to one owner.
+
+        Args:
+            session: Open session.
+            owner_id: Whose settings to read and write. ``None`` operates on the
+                installation-wide layer — correct for the importer and for
+                start-up, wrong for anything reached from a user's panel.
+        """
+        super().__init__(session)
+        self.owner_id = owner_id
+
+    async def _row(self, key: str, *, owner_id: int | None) -> Setting | None:
+        """Fetch one settings row at a specific layer."""
+        stmt = select(Setting).where(Setting.key == key)
+        stmt = (
+            stmt.where(Setting.owner_id.is_(None))
+            if owner_id is None
+            else stmt.where(Setting.owner_id == owner_id)
+        )
+        return await self.session.scalar(stmt)
+
     async def get_raw(self, key: str) -> str | None:
-        """Read a value, falling back to the declared default."""
-        setting = await self.session.scalar(select(Setting).where(Setting.key == key))
-        if setting is not None and setting.value is not None:
-            return setting.value
+        """Read a value: the owner's, else the global one, else the default."""
+        if self.owner_id is not None:
+            mine = await self._row(key, owner_id=self.owner_id)
+            if mine is not None and mine.value is not None:
+                return mine.value
+
+        shared = await self._row(key, owner_id=None)
+        if shared is not None and shared.value is not None:
+            return shared.value
+
         return SettingKey.DEFAULTS.get(key)
 
     async def set_raw(self, key: str, value: str | None) -> None:
-        """Write a value, creating the row if needed."""
-        setting = await self.session.scalar(select(Setting).where(Setting.key == key))
+        """Write a value at this repository's layer, creating the row if needed."""
+        setting = await self._row(key, owner_id=self.owner_id)
         if setting is None:
-            self.session.add(Setting(key=key, value=value))
+            self.session.add(Setting(key=key, value=value, owner_id=self.owner_id))
         else:
             setting.value = value
         await self.session.flush()
@@ -114,6 +153,11 @@ class SettingsRepository(BaseRepository[Setting]):
 
     async def all_as_dict(self) -> dict[str, str | None]:
         """Every stored setting, for backups and the settings panel."""
-        result = await self.session.scalars(select(Setting).order_by(Setting.key))
+        stmt = select(Setting).order_by(Setting.key)
+        if self.owner_id is not None:
+            stmt = stmt.where((Setting.owner_id == self.owner_id) | Setting.owner_id.is_(None))
+        else:
+            stmt = stmt.where(Setting.owner_id.is_(None))
+        result = await self.session.scalars(stmt)
         stored = {setting.key: setting.value for setting in result}
         return {**SettingKey.DEFAULTS, **stored}

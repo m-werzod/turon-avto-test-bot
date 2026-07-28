@@ -11,22 +11,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Integer
+from sqlalchemy import DateTime, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from bot.database.base import Base, IntPrimaryKeyMixin, TimestampMixin
+from bot.database.base import Base, IntPrimaryKeyMixin, OwnerMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from bot.database.models.quiz_post import QuizPost
 
 
-class Cycle(IntPrimaryKeyMixin, TimestampMixin, Base):
+class Cycle(IntPrimaryKeyMixin, OwnerMixin, TimestampMixin, Base):
     """One complete pass through the question bank."""
 
     __tablename__ = "cycles"
 
     #: 1-based, monotonically increasing. Shown to the admin as "Cycle 3".
-    number: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    number: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -36,6 +36,11 @@ class Cycle(IntPrimaryKeyMixin, TimestampMixin, Base):
     #: Size of the active question bank when the cycle opened. Kept as a snapshot
     #: so progress stays meaningful even if questions are imported mid-cycle.
     questions_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        # Cycle numbering restarts per owner, so it is only unique within one.
+        UniqueConstraint("owner_id", "number", name="owner_cycle_number"),
+    )
 
     posts: Mapped[list[QuizPost]] = relationship(
         back_populates="cycle",

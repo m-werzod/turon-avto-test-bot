@@ -55,6 +55,48 @@ class NotifyService:
             self._recent = {key: ts for key, ts in self._recent.items() if ts > cutoff}
         return True
 
+    async def to_user(self, user_id: int, text: str, *, fingerprint: str | None = None) -> int:
+        """Send a message to one specific user.
+
+        Operational problems now belong to whoever owns the schedule that hit
+        them, not to the installation's admins: a channel the bot was removed
+        from is that person's to fix, and telling everyone else about it is both
+        noise and a small leak of who runs what.
+
+        Args:
+            user_id: Telegram id of the recipient.
+            text: HTML-formatted message.
+            fingerprint: Dedupe key. Repeats within five minutes are dropped.
+                Include the user id in it, or one person's repeated failure will
+                silence the same warning for everybody else.
+
+        Returns:
+            1 when delivered, 0 otherwise.
+        """
+        if not self.enabled or not user_id:
+            return 0
+        if fingerprint and not self._should_send(fingerprint):
+            logger.debug("Suppressed duplicate notification: %s", fingerprint)
+            return 0
+
+        try:
+            await self.bot.send_message(
+                chat_id=user_id,
+                text=truncate(text, MESSAGE_LIMIT),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        except TelegramAPIError as exc:
+            # Usually the user blocked the bot or never opened a chat with it —
+            # nothing the caller can act on.
+            logger.warning("Could not notify user %d: %s", user_id, exc)
+            return 0
+        except Exception:
+            logger.exception("Unexpected error notifying user %d", user_id)
+            return 0
+
+        return 1
+
     async def broadcast(self, text: str, *, fingerprint: str | None = None) -> int:
         """Send a message to every admin.
 
@@ -114,14 +156,29 @@ class NotifyService:
         # firing every minute usually carries slightly different detail.
         return await self.broadcast(message, fingerprint=f"{where}:{type(error).__name__}")
 
-    async def notify_channel_lost(self, channel: str, reason: str, *, language: str = "uz") -> int:
-        """Tell admins the bot can no longer post to a channel."""
+    async def notify_channel_lost(
+        self,
+        channel: str,
+        reason: str,
+        *,
+        language: str = "uz",
+        user_id: int | None = None,
+    ) -> int:
+        """Tell the channel's owner the bot can no longer post to it.
+
+        Falls back to the installation admins when no owner is given, which
+        covers the paths that are genuinely installation-wide.
+        """
         message = t(
             "errors.channel_lost_access",
             language,
             channel=escape_html(channel),
             reason=escape_html(reason[:200]),
         )
+        if user_id is not None:
+            return await self.to_user(
+                user_id, message, fingerprint=f"channel_lost:{user_id}:{channel}"
+            )
         return await self.broadcast(message, fingerprint=f"channel_lost:{channel}")
 
     async def notify_source_unavailable(self, attempts: int, *, language: str = "uz") -> int:

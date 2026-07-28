@@ -6,7 +6,10 @@ free of session plumbing.
 """
 
 from bot.database.repositories.base import BaseRepository
-from bot.database.repositories.channel_repo import ChannelRepository
+from bot.database.repositories.channel_repo import (
+    ChannelAlreadyConnectedError,
+    ChannelRepository,
+)
 from bot.database.repositories.cycle_repo import CycleExhaustedError, CycleRepository
 from bot.database.repositories.delivery_repo import DeliveryRepository
 from bot.database.repositories.event_repo import EventRepository
@@ -17,6 +20,7 @@ from bot.database.repositories.user_repo import UserRepository
 
 __all__ = [
     "BaseRepository",
+    "ChannelAlreadyConnectedError",
     "ChannelRepository",
     "CycleExhaustedError",
     "CycleRepository",

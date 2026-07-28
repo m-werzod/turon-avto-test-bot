@@ -8,13 +8,19 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from bot.database.base import Base, IntPrimaryKeyMixin, TelegramId, TimestampMixin
+from bot.database.base import (
+    Base,
+    IntPrimaryKeyMixin,
+    OwnerMixin,
+    TelegramId,
+    TimestampMixin,
+)
 
 if TYPE_CHECKING:
     from bot.database.models.delivery import Delivery
 
 
-class Channel(IntPrimaryKeyMixin, TimestampMixin, Base):
+class Channel(IntPrimaryKeyMixin, OwnerMixin, TimestampMixin, Base):
     """A channel the bot publishes quizzes to.
 
     Several channels can be active at once; a scheduled post is broadcast to

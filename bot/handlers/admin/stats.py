@@ -27,12 +27,13 @@ router = Router(name="admin-stats")
 async def show_stats(
     callback: CallbackQuery,
     session: AsyncSession,
+    owner_id: int,
     stats_service: StatsService,
     lang: str = "uz",
 ) -> None:
     """Render the statistics snapshot."""
     await answer_callback(callback)
-    stats = await stats_service.collect(session)
+    stats = await stats_service.collect(session, owner_id)
 
     channels = (
         "\n".join(f"• {escape_html(name)}" for name in stats.channels)
@@ -108,18 +109,19 @@ async def confirm_send_now(callback: CallbackQuery, lang: str = "uz") -> None:
 async def send_now(
     callback: CallbackQuery,
     session: AsyncSession,
+    owner_id: int,
     quiz_service: QuizService,
     lang: str = "uz",
 ) -> None:
     """Publish the next batch immediately, ignoring the schedule."""
     await answer_callback(callback)
 
-    batch_size = await SettingsRepository(session).questions_per_send()
+    batch_size = await SettingsRepository(session, owner_id).questions_per_send()
     await safe_edit(callback, t("send_now.sending", lang))
 
     try:
         reports = await quiz_service.send_batch(
-            session, batch_size, trigger=PostTrigger.MANUAL, admin_language=lang
+            session, owner_id, batch_size, trigger=PostTrigger.MANUAL, admin_language=lang
         )
     except NoChannelsError:
         await safe_edit(callback, t("send_now.no_channels", lang), reply_markup=back_keyboard(lang))

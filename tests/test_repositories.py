@@ -21,6 +21,9 @@ from bot.database.repositories import (
     UserRepository,
 )
 
+#: Fixed owner for tests; every per-user row belongs to one tenant.
+OWNER = 424242
+
 OPTIONS = ["A", "B", "C", "D"]
 
 
@@ -127,12 +130,12 @@ class TestSettings:
     """Typed access over the key/value table."""
 
     async def test_defaults_apply_before_any_write(self, session: AsyncSession) -> None:
-        repo = SettingsRepository(session)
+        repo = SettingsRepository(session, OWNER)
         assert await repo.is_scheduler_paused() is False
         assert await repo.content_language() == "uz"
 
     async def test_round_trip(self, session: AsyncSession) -> None:
-        repo = SettingsRepository(session)
+        repo = SettingsRepository(session, OWNER)
         await repo.set_scheduler_paused(True)
         assert await repo.is_scheduler_paused() is True
         await repo.set_scheduler_paused(False)
@@ -140,18 +143,18 @@ class TestSettings:
 
     @pytest.mark.parametrize("raw", ["true", "TRUE", "1", "yes", "on"])
     async def test_truthy_spellings(self, session: AsyncSession, raw: str) -> None:
-        repo = SettingsRepository(session)
+        repo = SettingsRepository(session, OWNER)
         await repo.set_raw(SettingKey.SCHEDULER_PAUSED, raw)
         assert await repo.is_scheduler_paused() is True
 
     async def test_malformed_int_falls_back(self, session: AsyncSession) -> None:
         """A corrupt value must not crash the caller."""
-        repo = SettingsRepository(session)
+        repo = SettingsRepository(session, OWNER)
         await repo.set_raw(SettingKey.POSTS_PER_DAY, "not-a-number")
         assert await repo.get_int(SettingKey.POSTS_PER_DAY, default=3) == 3
 
     async def test_all_as_dict_includes_defaults(self, session: AsyncSession) -> None:
-        repo = SettingsRepository(session)
+        repo = SettingsRepository(session, OWNER)
         await repo.set_content_language("ru")
         values = await repo.all_as_dict()
         assert values[SettingKey.CONTENT_LANGUAGE] == "ru"
@@ -162,20 +165,20 @@ class TestSchedule:
     """Posting times."""
 
     async def test_replace_all_sorts_and_deduplicates(self, session: AsyncSession) -> None:
-        repo = ScheduleRepository(session)
+        repo = ScheduleRepository(session, OWNER)
         slots = await repo.replace_all([time(20, 0), time(8, 0), time(13, 0), time(8, 0)])
         assert [slot.label for slot in slots] == ["08:00", "13:00", "20:00"]
 
     async def test_replace_all_removes_old_slots(self, session: AsyncSession) -> None:
         """Going from three posts a day to one must not orphan two slots."""
-        repo = ScheduleRepository(session)
+        repo = ScheduleRepository(session, OWNER)
         await repo.replace_all([time(8, 0), time(13, 0), time(20, 0)])
         await repo.replace_all([time(9, 30)])
         remaining = await repo.list_enabled()
         assert [slot.label for slot in remaining] == ["09:30"]
 
     async def test_add_slot_is_idempotent(self, session: AsyncSession) -> None:
-        repo = ScheduleRepository(session)
+        repo = ScheduleRepository(session, OWNER)
         _, created_first = await repo.add_slot(time(8, 0))
         _, created_again = await repo.add_slot(time(8, 0))
         assert created_first is True
@@ -188,7 +191,7 @@ class TestChannels:
 
     async def test_reconnecting_revives_the_original_row(self, session: AsyncSession) -> None:
         """History must stay attached rather than being orphaned."""
-        repo = ChannelRepository(session)
+        repo = ChannelRepository(session, OWNER)
         channel, created = await repo.upsert(chat_id=-100123, username="ch", title="Ch")
         assert created is True
         original_id = channel.id
@@ -203,7 +206,7 @@ class TestChannels:
         assert revived.title == "Renamed"
 
     async def test_failure_reason_is_recorded(self, session: AsyncSession) -> None:
-        repo = ChannelRepository(session)
+        repo = ChannelRepository(session, OWNER)
         channel, _ = await repo.upsert(chat_id=-100999, username=None, title="X")
         await repo.mark_failed(channel, "bot was kicked")
         assert channel.last_error == "bot was kicked"
@@ -219,10 +222,10 @@ class TestDeliveries:
         from zoneinfo import ZoneInfo
 
         tashkent = ZoneInfo("Asia/Tashkent")
-        channels = ChannelRepository(session)
+        channels = ChannelRepository(session, OWNER)
         channel, _ = await channels.upsert(chat_id=-1, username="c", title="C")
 
-        post, _, _ = await CycleRepository(session).claim_next_question(total_active=25)
+        post, _, _ = await CycleRepository(session, OWNER).claim_next_question(total_active=25)
         deliveries = DeliveryRepository(session)
         delivery = await deliveries.create_pending(post.id, channel.id)
         await deliveries.mark_sent(delivery, poll_message_id=1)
@@ -234,9 +237,9 @@ class TestDeliveries:
     async def test_failed_deliveries_are_counted_separately(
         self, session: AsyncSession, question_bank
     ) -> None:
-        channels = ChannelRepository(session)
+        channels = ChannelRepository(session, OWNER)
         channel, _ = await channels.upsert(chat_id=-2, username="c", title="C")
-        post, _, _ = await CycleRepository(session).claim_next_question(total_active=25)
+        post, _, _ = await CycleRepository(session, OWNER).claim_next_question(total_active=25)
 
         deliveries = DeliveryRepository(session)
         delivery = await deliveries.create_pending(post.id, channel.id)

@@ -12,7 +12,7 @@ posting and nobody notices" failure the spec rules out.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from bot.database.models.event_log import EventType
@@ -20,6 +20,7 @@ from bot.database.models.quiz_post import PostTrigger
 from bot.database.repositories import (
     CycleExhaustedError,
     EventRepository,
+    ScheduleRepository,
     SettingsRepository,
 )
 from bot.database.session import Database
@@ -48,16 +49,55 @@ class JobContext:
     backup_service: object | None = None
 
 
-async def run_scheduled_post(
+async def run_slot(
     context: JobContext,
     *,
+    run_at: time,
     slot_label: str = "",
     trigger: PostTrigger = PostTrigger.SCHEDULED,
-) -> list[SendReport]:
-    """Publish this slot's quizzes, honouring the pause and weekend settings.
+) -> dict[int, list[SendReport]]:
+    """Publish this slot for every owner scheduled at it.
+
+    One owner's failure must not stop the rest, so each is posted independently
+    and its exceptions are contained — a single admin who removed the bot from
+    their channel cannot cost everybody else their 08:00 post.
 
     Args:
         context: Injected dependencies.
+        run_at: Wall-clock time of the slot.
+        slot_label: The ``HH:MM`` label, for logging.
+        trigger: Recorded on the resulting posts.
+
+    Returns:
+        Reports keyed by owner id.
+    """
+    async with context.db.session() as session:
+        owners = await ScheduleRepository.owners_due_at(session, run_at)
+
+    if not owners:
+        logger.debug("Slot %s has no owners", slot_label)
+        return {}
+
+    results: dict[int, list[SendReport]] = {}
+    for owner_id in owners:
+        results[owner_id] = await run_scheduled_post(
+            context, owner_id=owner_id, slot_label=slot_label, trigger=trigger
+        )
+    return results
+
+
+async def run_scheduled_post(
+    context: JobContext,
+    *,
+    owner_id: int,
+    slot_label: str = "",
+    trigger: PostTrigger = PostTrigger.SCHEDULED,
+) -> list[SendReport]:
+    """Publish one owner's quizzes, honouring their pause and weekend settings.
+
+    Args:
+        context: Injected dependencies.
+        owner_id: Whose schedule this run belongs to.
         slot_label: The ``HH:MM`` slot this run belongs to, for logging.
         trigger: Recorded on the resulting posts.
 
@@ -68,7 +108,7 @@ async def run_scheduled_post(
 
     try:
         async with context.db.session() as session:
-            settings_repo = SettingsRepository(session)
+            settings_repo = SettingsRepository(session, owner_id)
 
             if await settings_repo.is_scheduler_paused():
                 logger.info("Slot %s skipped: scheduler is paused", slot_label)
@@ -83,6 +123,7 @@ async def run_scheduled_post(
             batch_size = await settings_repo.questions_per_send()
             reports = await context.quiz.send_batch(
                 session,
+                owner_id,
                 batch_size,
                 trigger=trigger,
                 admin_language=context.admin_language,
@@ -97,9 +138,10 @@ async def run_scheduled_post(
                 level="WARNING",
                 payload={"slot": slot_label},
             )
-        await context.notify.broadcast(
+        await context.notify.to_user(
+            owner_id,
             "⚠️ Rejadagi test yuborilmadi: birorta kanal ulanmagan.",
-            fingerprint="no_channels",
+            fingerprint=f"no_channels:{owner_id}",
         )
         return []
 
@@ -122,15 +164,19 @@ async def run_scheduled_post(
 
     for report in reports:
         if report.fully_failed:
-            await context.notify.broadcast(
+            await context.notify.to_user(
+                owner_id,
                 f"⚠️ Test hech bir kanalga yuborilmadi.\n\n{report.error_summary()}",
-                fingerprint="all_channels_failed",
+                fingerprint=f"all_channels_failed:{owner_id}",
             )
         elif report.failed:
             for outcome in report.outcomes:
                 if outcome.access_lost:
                     await context.notify.notify_channel_lost(
-                        outcome.channel, outcome.error or "", language=context.admin_language
+                        outcome.channel,
+                        outcome.error or "",
+                        language=context.admin_language,
+                        user_id=owner_id,
                     )
 
     return reports

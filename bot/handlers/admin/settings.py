@@ -21,13 +21,14 @@ router = Router(name="admin-settings")
 async def show_settings(
     callback: CallbackQuery,
     session: AsyncSession,
+    owner_id: int,
     lang: str = "uz",
     timezone: object | None = None,
     send_as_document: bool = False,
 ) -> None:
     """Show current settings."""
     await answer_callback(callback)
-    settings_repo = SettingsRepository(session)
+    settings_repo = SettingsRepository(session, owner_id)
 
     content_language = await settings_repo.content_language()
     skip_weekends = await settings_repo.skip_weekends()
@@ -71,7 +72,7 @@ async def choose_content_language(callback: CallbackQuery, lang: str = "uz") -> 
 
 @router.callback_query(F.data.startswith(f"{CB.SET_CONTENT_LANG}:"))
 async def set_content_language(
-    callback: CallbackQuery, session: AsyncSession, lang: str = "uz"
+    callback: CallbackQuery, session: AsyncSession, owner_id: int, lang: str = "uz"
 ) -> None:
     """Persist which language of questions the bot publishes.
 
@@ -81,7 +82,7 @@ async def set_content_language(
     code = (callback.data or "").rsplit(":", 1)[-1]
     language = translator.normalize(code)
 
-    await SettingsRepository(session).set_content_language(language)
+    await SettingsRepository(session, owner_id).set_content_language(language)
     await answer_callback(
         callback,
         t("settings.content_language_saved", lang, language=LANGUAGE_LABELS[language]),
@@ -100,6 +101,8 @@ async def noop_language(callback: CallbackQuery) -> None:
     await answer_callback(callback)
 
 
-async def _refresh_user_language(session: AsyncSession, telegram_id: int, language: str) -> None:
+async def _refresh_user_language(
+    session: AsyncSession, owner_id: int, telegram_id: int, language: str
+) -> None:
     """Persist an interface language change."""
     await UserRepository(session).set_language(telegram_id, language)

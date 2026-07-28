@@ -65,13 +65,14 @@ async def show_scheduler(
     callback: CallbackQuery,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     scheduler: QuizScheduler,
     lang: str = "uz",
 ) -> None:
     """Show the current schedule."""
     await state.clear()
     await answer_callback(callback)
-    await _render_scheduler(callback, session, scheduler, lang)
+    await _render_scheduler(callback, session, owner_id, scheduler, lang)
 
 
 @router.callback_query(F.data == CB.SCHED_EDIT)
@@ -107,6 +108,7 @@ async def receive_times(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     scheduler: QuizScheduler,
     lang: str = "uz",
 ) -> None:
@@ -128,9 +130,9 @@ async def receive_times(
         await message.answer(t("scheduler.duplicate_times", lang))
         return
 
-    schedule = ScheduleRepository(session)
+    schedule = ScheduleRepository(session, owner_id)
     slots = await schedule.replace_all(parsed)
-    await SettingsRepository(session).set_int(SettingKey.POSTS_PER_DAY, len(slots))
+    await SettingsRepository(session, owner_id).set_int(SettingKey.POSTS_PER_DAY, len(slots))
 
     labels = ", ".join(slot.label for slot in slots)
     await EventRepository(session).record(
@@ -155,16 +157,20 @@ async def receive_times(
 
 @router.callback_query(F.data == CB.SCHED_PAUSE)
 async def pause_scheduler(
-    callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, lang: str = "uz"
+    callback: CallbackQuery,
+    session: AsyncSession,
+    owner_id: int,
+    scheduler: QuizScheduler,
+    lang: str = "uz",
 ) -> None:
     """Suspend automatic posting."""
-    settings_repo = SettingsRepository(session)
+    settings_repo = SettingsRepository(session, owner_id)
     if await settings_repo.is_scheduler_paused():
         await answer_callback(callback, t("scheduler.already_paused", lang), alert=True)
         return
 
     await session.commit()  # the scheduler writes through its own session
-    await scheduler.pause()
+    await scheduler.pause(owner_id)
 
     await answer_callback(callback)
     await safe_edit(
@@ -176,16 +182,20 @@ async def pause_scheduler(
 
 @router.callback_query(F.data == CB.SCHED_RESUME)
 async def resume_scheduler(
-    callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, lang: str = "uz"
+    callback: CallbackQuery,
+    session: AsyncSession,
+    owner_id: int,
+    scheduler: QuizScheduler,
+    lang: str = "uz",
 ) -> None:
     """Resume automatic posting."""
-    settings_repo = SettingsRepository(session)
+    settings_repo = SettingsRepository(session, owner_id)
     if not await settings_repo.is_scheduler_paused():
         await answer_callback(callback, t("scheduler.already_running", lang), alert=True)
         return
 
     await session.commit()
-    await scheduler.resume()
+    await scheduler.resume(owner_id)
 
     next_run = scheduler.format_next_run()
     next_line = (
@@ -204,10 +214,10 @@ async def resume_scheduler(
 
 @router.callback_query(F.data == CB.SCHED_BATCH)
 async def choose_batch_size(
-    callback: CallbackQuery, session: AsyncSession, lang: str = "uz"
+    callback: CallbackQuery, session: AsyncSession, owner_id: int, lang: str = "uz"
 ) -> None:
     """Offer the batch sizes."""
-    current = await SettingsRepository(session).questions_per_send()
+    current = await SettingsRepository(session, owner_id).questions_per_send()
     await safe_edit(
         callback,
         t("scheduler.batch_prompt", lang, current=current),
@@ -217,7 +227,11 @@ async def choose_batch_size(
 
 @router.callback_query(F.data.startswith(f"{CB.SCHED_BATCH_SET}:"))
 async def set_batch_size(
-    callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, lang: str = "uz"
+    callback: CallbackQuery,
+    session: AsyncSession,
+    owner_id: int,
+    scheduler: QuizScheduler,
+    lang: str = "uz",
 ) -> None:
     """Persist how many questions go out at each scheduled time."""
     raw = (callback.data or "").rsplit(":", 1)[-1]
@@ -227,34 +241,42 @@ async def set_batch_size(
         await answer_callback(callback, t("errors.generic", lang))
         return
 
-    await SettingsRepository(session).set_questions_per_send(count)
+    await SettingsRepository(session, owner_id).set_questions_per_send(count)
     await answer_callback(callback, t("scheduler.batch_saved", lang, count=count))
-    await _render_scheduler(callback, session, scheduler, lang)
+    await _render_scheduler(callback, session, owner_id, scheduler, lang)
 
 
 @router.callback_query(F.data == CB.SCHED_WEEKENDS)
 async def toggle_weekends(
-    callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, lang: str = "uz"
+    callback: CallbackQuery,
+    session: AsyncSession,
+    owner_id: int,
+    scheduler: QuizScheduler,
+    lang: str = "uz",
 ) -> None:
     """Turn weekend posting on or off."""
-    settings_repo = SettingsRepository(session)
+    settings_repo = SettingsRepository(session, owner_id)
     skip_now = not await settings_repo.skip_weekends()
     await settings_repo.set_skip_weekends(skip_now)
 
     status = t("settings.weekends_skip" if skip_now else "settings.weekends_send", lang)
     await answer_callback(callback, t("settings.weekends_saved", lang, status=status))
-    await _render_scheduler(callback, session, scheduler, lang)
+    await _render_scheduler(callback, session, owner_id, scheduler, lang)
 
 
 async def _render_scheduler(
-    callback: CallbackQuery, session: AsyncSession, scheduler: QuizScheduler, language: str
+    callback: CallbackQuery,
+    session: AsyncSession,
+    owner_id: int,
+    scheduler: QuizScheduler,
+    language: str,
 ) -> None:
     """Draw the scheduler panel."""
-    settings_repo = SettingsRepository(session)
+    settings_repo = SettingsRepository(session, owner_id)
     paused = await settings_repo.is_scheduler_paused()
     skip_weekends = await settings_repo.skip_weekends()
     per_send = await settings_repo.questions_per_send()
-    slots = await ScheduleRepository(session).list_enabled()
+    slots = await ScheduleRepository(session, owner_id).list_enabled()
 
     times = ", ".join(slot.label for slot in slots)
     next_run = scheduler.format_next_run()
@@ -318,6 +340,7 @@ async def pick_minute(
     callback: CallbackQuery,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     scheduler: QuizScheduler,
     lang: str = "uz",
 ) -> None:
@@ -355,7 +378,7 @@ async def pick_minute(
         return
 
     await answer_callback(callback, chosen)
-    await _save_schedule(callback, state, session, scheduler, sorted(picked), lang)
+    await _save_schedule(callback, state, session, owner_id, scheduler, sorted(picked), lang)
 
 
 @router.callback_query(F.data == CB.SCHED_UNDO)
@@ -400,6 +423,7 @@ async def _save_schedule(
     callback: CallbackQuery,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     scheduler: QuizScheduler,
     times: list[str],
     language: str,
@@ -407,9 +431,9 @@ async def _save_schedule(
     """Persist the picked times and reload the scheduler."""
     parsed = [time(int(value[:2]), int(value[3:])) for value in times]
 
-    schedule = ScheduleRepository(session)
+    schedule = ScheduleRepository(session, owner_id)
     slots = await schedule.replace_all(parsed)
-    await SettingsRepository(session).set_int(SettingKey.POSTS_PER_DAY, len(slots))
+    await SettingsRepository(session, owner_id).set_int(SettingKey.POSTS_PER_DAY, len(slots))
 
     labels = ", ".join(slot.label for slot in slots)
     await EventRepository(session).record(

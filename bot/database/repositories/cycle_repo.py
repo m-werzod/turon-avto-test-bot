@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from bot.database.models.cycle import Cycle
 from bot.database.models.question import Question
 from bot.database.models.quiz_post import PostTrigger, QuizPost
-from bot.database.repositories.base import BaseRepository
+from bot.database.repositories.base import OwnedRepository
 from bot.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ class CycleExhaustedError(RuntimeError):
     """
 
 
-class CycleRepository(BaseRepository[Cycle]):
+class CycleRepository(OwnedRepository[Cycle]):
     """Cycles, and the allocation of questions to them."""
 
     model = Cycle
@@ -39,7 +39,9 @@ class CycleRepository(BaseRepository[Cycle]):
     async def get_open_cycle(self) -> Cycle | None:
         """The cycle currently accepting posts, if one is open."""
         stmt = (
-            select(Cycle).where(Cycle.completed_at.is_(None)).order_by(Cycle.number.desc()).limit(1)
+            self.owned(select(Cycle).where(Cycle.completed_at.is_(None)))
+            .order_by(Cycle.number.desc())
+            .limit(1)
         )
         return await self.session.scalar(stmt)
 
@@ -51,8 +53,13 @@ class CycleRepository(BaseRepository[Cycle]):
         return await self.open_next_cycle(questions_total)
 
     async def open_next_cycle(self, questions_total: int = 0) -> Cycle:
-        """Open a new cycle numbered one above the highest so far."""
-        highest = await self.session.scalar(select(func.max(Cycle.number)))
+        """Open a new cycle, numbered one above this owner's highest so far.
+
+        Scoped to the owner: cycle numbers are what the panel shows as "cycle
+        #3", so a user who joined late should start at 1, not inherit a count
+        from everyone who came before them.
+        """
+        highest = await self.session.scalar(self.owned(select(func.max(Cycle.number))))
         cycle = Cycle(
             number=int(highest or 0) + 1,
             started_at=datetime.now(UTC),
@@ -206,6 +213,6 @@ class CycleRepository(BaseRepository[Cycle]):
 
     async def recent_cycles(self, limit: int = 5) -> list[Cycle]:
         """Most recent cycles, newest first."""
-        stmt = select(Cycle).order_by(Cycle.number.desc()).limit(limit)
+        stmt = self.owned(select(Cycle)).order_by(Cycle.number.desc()).limit(limit)
         result = await self.session.scalars(stmt)
         return list(result)

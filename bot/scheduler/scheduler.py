@@ -25,7 +25,7 @@ from bot.database.repositories import (
     ScheduleRepository,
     SettingsRepository,
 )
-from bot.scheduler.jobs import JobContext, run_maintenance, run_scheduled_post
+from bot.scheduler.jobs import JobContext, run_maintenance, run_scheduled_post, run_slot
 from bot.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -88,18 +88,13 @@ class QuizScheduler:
         self._register_maintenance()
 
         async with self.context.db.session() as session:
-            slots = await ScheduleRepository(session).list_enabled()
-            paused = await SettingsRepository(session).is_scheduler_paused()
+            times = await ScheduleRepository.distinct_enabled_times(session)
+            labels = [run_at.strftime("%H:%M") for run_at in times]
             await EventRepository(session).record(
                 EventType.SCHEDULER_STARTED,
-                f"Scheduler started with {len(slots)} slot(s): "
-                f"{', '.join(slot.label for slot in slots) or 'none'}"
-                + (" (paused)" if paused else ""),
-                payload={
-                    "slots": [slot.label for slot in slots],
-                    "paused": paused,
-                    "timezone": str(self.timezone),
-                },
+                f"Scheduler started with {len(times)} distinct time(s): "
+                f"{', '.join(labels) or 'none'}",
+                payload={"times": labels, "timezone": str(self.timezone)},
             )
 
         await self.catch_up_missed()
@@ -114,28 +109,33 @@ class QuizScheduler:
             if job.id.startswith(_SLOT_JOB_PREFIX):
                 job.remove()
 
+        # One job per distinct wall-clock time, not per slot: every owner posting
+        # at 08:00 shares a single trigger, which fans out to them when it fires.
+        # A job each would put thousands of near-identical cron entries in the
+        # scheduler as the bot gains users, all waking at the same instant.
         async with self.context.db.session() as session:
-            slots = await ScheduleRepository(session).list_enabled()
+            times = await ScheduleRepository.distinct_enabled_times(session)
 
-        for slot in slots:
+        for run_at in times:
+            label = run_at.strftime("%H:%M")
             self._scheduler.add_job(
-                run_scheduled_post,
+                run_slot,
                 trigger=CronTrigger(
-                    hour=slot.run_at.hour,
-                    minute=slot.run_at.minute,
+                    hour=run_at.hour,
+                    minute=run_at.minute,
                     second=0,
                     timezone=self.timezone,
                 ),
-                id=f"{_SLOT_JOB_PREFIX}{slot.run_at.strftime('%H%M')}",
-                name=f"Quiz post at {slot.label}",
-                kwargs={"context": self.context, "slot_label": slot.label},
+                id=f"{_SLOT_JOB_PREFIX}{run_at.strftime('%H%M')}",
+                name=f"Quiz post at {label}",
+                kwargs={"context": self.context, "run_at": run_at, "slot_label": label},
                 replace_existing=True,
             )
 
         logger.info(
-            "Scheduler reloaded with %d slot(s): %s",
-            len(slots),
-            ", ".join(slot.label for slot in slots) or "none",
+            "Scheduler reloaded with %d distinct time(s): %s",
+            len(times),
+            ", ".join(run_at.strftime("%H:%M") for run_at in times) or "none",
         )
 
     def _register_maintenance(self) -> None:
@@ -158,16 +158,29 @@ class QuizScheduler:
         most recent slot occurrence is inside the misfire grace window and
         nothing was delivered since, post once now.
 
-        Deliberately conservative — it fires at most one catch-up, so a server
-        that was off for a week does not dump a backlog into the channel.
+        Deliberately conservative — at most one catch-up per owner, so a server
+        that was off for a week does not dump a backlog into anybody's channel.
         """
+        async with self.context.db.session() as session:
+            owners = await ScheduleRepository.distinct_owners(session)
+
+        for owner_id in owners:
+            try:
+                await self._catch_up_owner(owner_id)
+            except Exception:
+                # One owner's broken catch-up must not abort start-up for the
+                # rest, and start-up is exactly when nobody is watching.
+                logger.exception("Catch-up failed for owner %d", owner_id)
+
+    async def _catch_up_owner(self, owner_id: int) -> None:
+        """Run the catch-up check for a single owner."""
         now = datetime.now(self.timezone)
 
         async with self.context.db.session() as session:
-            if await SettingsRepository(session).is_scheduler_paused():
+            if await SettingsRepository(session, owner_id).is_scheduler_paused():
                 return
 
-            slots = await ScheduleRepository(session).list_enabled()
+            slots = await ScheduleRepository(session, owner_id).list_enabled()
             if not slots:
                 return
 
@@ -189,7 +202,7 @@ class QuizScheduler:
                 )
                 return
 
-            last_delivery = await DeliveryRepository(session).last_sent()
+            last_delivery = await DeliveryRepository(session).last_sent(owner_id=owner_id)
             if last_delivery is not None and last_delivery.sent_at is not None:
                 sent_at = last_delivery.sent_at
                 if sent_at.tzinfo is None:
@@ -199,11 +212,13 @@ class QuizScheduler:
                     return
 
         logger.info(
-            "Catching up the %s slot missed while the bot was down",
+            "Catching up owner %d's %s slot missed while the bot was down",
+            owner_id,
             latest.strftime("%H:%M"),
         )
         await run_scheduled_post(
             self.context,
+            owner_id=owner_id,
             slot_label=f"{latest.strftime('%H:%M')} (catch-up)",
             trigger=PostTrigger.CATCHUP,
         )
@@ -224,32 +239,32 @@ class QuizScheduler:
             return None
         return moment.astimezone(self.timezone).strftime("%d.%m.%Y %H:%M")
 
-    async def pause(self) -> None:
+    async def pause(self, owner_id: int) -> None:
         """Suspend automatic posting and persist the decision.
 
         The flag is stored in the database rather than only in APScheduler, so a
         paused bot stays paused across a restart instead of quietly resuming.
         """
         async with self.context.db.session() as session:
-            await SettingsRepository(session).set_scheduler_paused(True)
+            await SettingsRepository(session, owner_id).set_scheduler_paused(True)
             await EventRepository(session).record(
                 EventType.SCHEDULER_PAUSED, "Scheduler paused by admin"
             )
         logger.info("Scheduler paused")
 
-    async def resume(self) -> None:
+    async def resume(self, owner_id: int) -> None:
         """Resume automatic posting and persist the decision."""
         async with self.context.db.session() as session:
-            await SettingsRepository(session).set_scheduler_paused(False)
+            await SettingsRepository(session, owner_id).set_scheduler_paused(False)
             await EventRepository(session).record(
                 EventType.SCHEDULER_RESUMED, "Scheduler resumed by admin"
             )
         logger.info("Scheduler resumed")
 
-    async def is_paused(self) -> bool:
+    async def is_paused(self, owner_id: int) -> bool:
         """Whether automatic posting is currently suspended."""
         async with self.context.db.session() as session:
-            return await SettingsRepository(session).is_scheduler_paused()
+            return await SettingsRepository(session, owner_id).is_scheduler_paused()
 
     async def shutdown(self) -> None:
         """Stop the scheduler, letting running jobs finish."""

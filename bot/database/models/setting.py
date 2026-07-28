@@ -7,7 +7,7 @@ whereas "pause the scheduler" must take effect immediately and survive one.
 
 from __future__ import annotations
 
-from sqlalchemy import String, Text
+from sqlalchemy import BigInteger, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bot.database.base import Base, IntPrimaryKeyMixin, TimestampMixin
@@ -44,10 +44,17 @@ class Setting(IntPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "settings"
 
-    key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    #: NULL means an installation-wide value; a Telegram id scopes it to one
+    #: owner. Nullable rather than a second table so the same typed accessors
+    #: serve both, and a per-user value simply shadows the global one.
+    owner_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 
     #: Serialised as text; typed access is provided by SettingsRepository.
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (UniqueConstraint("owner_id", "key", name="owner_setting_key"),)
 
     def __repr__(self) -> str:
         return f"<Setting {self.key}={self.value!r}>"

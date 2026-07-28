@@ -40,14 +40,18 @@ _MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 @router.callback_query(F.data == CB.IMPORT)
 async def show_import(
-    callback: CallbackQuery, state: FSMContext, session: AsyncSession, lang: str = "uz"
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    owner_id: int,
+    lang: str = "uz",
 ) -> None:
     """Show the import menu with any files found on disk."""
     await state.clear()
     await answer_callback(callback)
 
     total = await QuestionRepository(session).count_active()
-    last_import = await SettingsRepository(session).get_raw(SettingKey.LAST_IMPORT_AT)
+    last_import = await SettingsRepository(session, owner_id).get_raw(SettingKey.LAST_IMPORT_AT)
     last_label = t("import.never", lang)
     if last_import:
         try:
@@ -73,6 +77,7 @@ async def show_import(
 async def import_from_disk(
     callback: CallbackQuery,
     session: AsyncSession,
+    owner_id: int,
     import_service: ImportService,
     lang: str = "uz",
 ) -> None:
@@ -88,13 +93,16 @@ async def import_from_disk(
 
     await answer_callback(callback)
     chosen = files[int(raw_index)]
-    await _run_import(callback, session, import_service, lambda: build_source(chosen), lang)
+    await _run_import(
+        callback, session, owner_id, import_service, lambda: build_source(chosen), lang
+    )
 
 
 @router.callback_query(F.data.startswith(f"{CB.IMPORT_WEB}:"))
 async def import_from_website(
     callback: CallbackQuery,
     session: AsyncSession,
+    owner_id: int,
     import_service: ImportService,
     lang: str = "uz",
 ) -> None:
@@ -102,11 +110,12 @@ async def import_from_website(
     await answer_callback(callback)
 
     key = (callback.data or "").rsplit(":", 1)[-1]
-    content_language = await SettingsRepository(session).content_language()
+    content_language = await SettingsRepository(session, owner_id).content_language()
 
     await _run_import(
         callback,
         session,
+        owner_id,
         import_service,
         lambda: build_web_source(key, language=content_language),
         lang,
@@ -129,6 +138,7 @@ async def receive_upload(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     bot: Bot,
     import_service: ImportService,
     lang: str = "uz",
@@ -181,7 +191,9 @@ async def receive_upload(
         return
 
     await state.clear()
-    await _run_import(status, session, import_service, lambda: build_source(destination), lang)
+    await _run_import(
+        status, session, owner_id, import_service, lambda: build_source(destination), lang
+    )
 
 
 @router.message(ImportStates.waiting_for_file)
@@ -193,6 +205,7 @@ async def reject_non_document(message: Message, lang: str = "uz") -> None:
 async def _run_import(
     target: CallbackQuery | Message,
     session: AsyncSession,
+    owner_id: int,
     import_service: ImportService,
     source_factory: Callable[[], QuestionSource],
     language: str,

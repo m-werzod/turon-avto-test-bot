@@ -262,6 +262,7 @@ class QuizService:
     async def send_batch(
         self,
         session: AsyncSession,
+        owner_id: int,
         count: int,
         *,
         trigger: PostTrigger = PostTrigger.SCHEDULED,
@@ -276,6 +277,7 @@ class QuizService:
 
         Args:
             session: Open session; the caller owns the transaction.
+            owner_id: Whose channels, cycle and settings this send belongs to.
             count: How many questions to publish. Values below one send nothing.
             trigger: What prompted this send.
             admin_language: Language for text embedded in the messages.
@@ -294,7 +296,7 @@ class QuizService:
                 await asyncio.sleep(pause_between)
             try:
                 report = await self.send_next(
-                    session, trigger=trigger, admin_language=admin_language
+                    session, owner_id, trigger=trigger, admin_language=admin_language
                 )
             except CycleExhaustedError:
                 # Nothing left to claim. Whatever already went out stands.
@@ -309,6 +311,7 @@ class QuizService:
     async def send_next(
         self,
         session: AsyncSession,
+        owner_id: int,
         *,
         trigger: PostTrigger = PostTrigger.SCHEDULED,
         admin_language: str = "uz",
@@ -317,6 +320,7 @@ class QuizService:
 
         Args:
             session: Open session; the caller owns the transaction.
+            owner_id: Whose channels, cycle and settings this send belongs to.
             trigger: What prompted this send.
             admin_language: Language for text embedded in the messages.
 
@@ -327,11 +331,11 @@ class QuizService:
             NoChannelsError: No active channel is connected.
             CycleExhaustedError: The question bank is empty.
         """
-        channels_repo = ChannelRepository(session)
-        cycle_repo = CycleRepository(session)
+        channels_repo = ChannelRepository(session, owner_id)
+        cycle_repo = CycleRepository(session, owner_id)
         question_repo = QuestionRepository(session)
         delivery_repo = DeliveryRepository(session)
-        settings_repo = SettingsRepository(session)
+        settings_repo = SettingsRepository(session, owner_id)
         events = EventRepository(session)
 
         channels = await channels_repo.list_active()

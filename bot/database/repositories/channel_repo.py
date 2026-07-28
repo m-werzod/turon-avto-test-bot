@@ -7,21 +7,32 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from bot.database.models.channel import Channel
-from bot.database.repositories.base import BaseRepository
+from bot.database.repositories.base import OwnedRepository
 
 
-class ChannelRepository(BaseRepository[Channel]):
+class ChannelAlreadyConnectedError(RuntimeError):
+    """The chat is already driven by a different owner.
+
+    ``chat_id`` is globally unique: two owners posting to one channel would
+    double-post every question. Raised so the handler can say who to ask rather
+    than surfacing a raw IntegrityError.
+    """
+
+
+class ChannelRepository(OwnedRepository[Channel]):
     """Reads and writes over connected channels."""
 
     model = Channel
 
     async def get_by_chat_id(self, chat_id: int) -> Channel | None:
         """Look a channel up by its Telegram chat id."""
-        return await self.session.scalar(select(Channel).where(Channel.chat_id == chat_id))
+        return await self.session.scalar(
+            self.owned(select(Channel).where(Channel.chat_id == chat_id))
+        )
 
     async def list_active(self) -> list[Channel]:
         """Every channel a scheduled post should be broadcast to."""
-        stmt = select(Channel).where(Channel.is_active.is_(True)).order_by(Channel.id)
+        stmt = self.owned(select(Channel).where(Channel.is_active.is_(True))).order_by(Channel.id)
         result = await self.session.scalars(stmt)
         return list(result)
 
@@ -40,11 +51,23 @@ class ChannelRepository(BaseRepository[Channel]):
 
         Returns:
             The channel and whether it was newly created.
+
+        Raises:
+            ChannelAlreadyConnectedError: Another owner already drives this chat.
         """
         channel = await self.get_by_chat_id(chat_id)
         now = datetime.now(UTC)
 
         if channel is None:
+            # Scoped lookups cannot see another owner's row, so check globally
+            # before inserting — otherwise this hits the unique index and
+            # surfaces as an IntegrityError the handler cannot explain.
+            taken = await self.session.scalar(select(Channel).where(Channel.chat_id == chat_id))
+            if taken is not None:
+                raise ChannelAlreadyConnectedError(
+                    f"Channel {chat_id} is already connected by another user"
+                )
+
             channel = Channel(
                 chat_id=chat_id,
                 username=username,

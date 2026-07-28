@@ -61,6 +61,10 @@ class FakeBot:
         return await self.send_photo(**kwargs)
 
 
+#: Fixed owner for tests.
+OWNER = 424242
+
+
 @pytest.fixture
 def quiz_service(tmp_path) -> tuple[QuizService, FakeBot]:  # type: ignore[no-untyped-def]
     """A quiz service wired to a fake bot."""
@@ -123,7 +127,7 @@ class TestSendNext:
     """Broadcasting to channels."""
 
     async def _add_channel(self, session: AsyncSession, chat_id: int) -> None:
-        await ChannelRepository(session).upsert(
+        await ChannelRepository(session, OWNER).upsert(
             chat_id=chat_id, username=f"c{abs(chat_id)}", title="Channel"
         )
 
@@ -132,7 +136,7 @@ class TestSendNext:
     ) -> None:
         service, _ = quiz_service
         with pytest.raises(NoChannelsError):
-            await service.send_next(session)
+            await service.send_next(session, OWNER)
 
     async def test_sends_one_poll_per_channel(
         self, session: AsyncSession, question_bank, quiz_service
@@ -141,7 +145,7 @@ class TestSendNext:
         for chat_id in (-101, -102, -103):
             await self._add_channel(session, chat_id)
 
-        report = await service.send_next(session, trigger=PostTrigger.MANUAL)
+        report = await service.send_next(session, OWNER, trigger=PostTrigger.MANUAL)
 
         assert report.succeeded == 3
         assert report.failed == 0
@@ -156,7 +160,7 @@ class TestSendNext:
             await self._add_channel(session, chat_id)
         bot.fail_on = {-202}
 
-        report = await service.send_next(session)
+        report = await service.send_next(session, OWNER)
 
         assert report.succeeded == 2
         assert report.failed == 1
@@ -174,14 +178,14 @@ class TestSendNext:
         await self._add_channel(session, -301)
         bot.fail_on = {-301}
 
-        report = await service.send_next(session)
+        report = await service.send_next(session, OWNER)
 
         assert report.fully_failed is True
         assert report.released is True
 
         from bot.database.repositories import CycleRepository
 
-        cycles = CycleRepository(session)
+        cycles = CycleRepository(session, OWNER)
         cycle = await cycles.get_open_cycle()
         assert cycle is not None
         assert await cycles.count_posts_in_cycle(cycle.id) == 0, "the claim was not released"
@@ -195,7 +199,7 @@ class TestSendNext:
         await self._add_channel(session, -402)
         bot.fail_on = {-402}
 
-        await service.send_next(session)
+        await service.send_next(session, OWNER)
 
         deliveries = await DeliveryRepository(session).recent(limit=10)
         statuses = {delivery.status for delivery in deliveries}
@@ -212,7 +216,7 @@ class TestSendNext:
         await self._add_channel(session, -501)
 
         for _ in range(len(question_bank)):
-            await service.send_next(session)
+            await service.send_next(session, OWNER)
 
         asked = [poll["question"] for poll in bot.polls]
         assert len(asked) == len(question_bank)
@@ -223,7 +227,7 @@ class TestSendBatch:
     """Publishing several questions at one scheduled time."""
 
     async def _add_channel(self, session: AsyncSession, chat_id: int) -> None:
-        await ChannelRepository(session).upsert(
+        await ChannelRepository(session, OWNER).upsert(
             chat_id=chat_id, username=f"c{abs(chat_id)}", title="Channel"
         )
 
@@ -233,7 +237,7 @@ class TestSendBatch:
         service, bot = quiz_service
         await self._add_channel(session, -301)
 
-        reports = await service.send_batch(session, 5, pause_between=0)
+        reports = await service.send_batch(session, OWNER, 5, pause_between=0)
 
         assert len(reports) == 5
         assert len(bot.polls) == 5
@@ -245,7 +249,7 @@ class TestSendBatch:
         service, _ = quiz_service
         await self._add_channel(session, -302)
 
-        reports = await service.send_batch(session, 8, pause_between=0)
+        reports = await service.send_batch(session, OWNER, 8, pause_between=0)
 
         question_ids = [report.question_id for report in reports]
         assert len(set(question_ids)) == len(question_ids)
@@ -262,7 +266,7 @@ class TestSendBatch:
         service, bot = quiz_service
         await self._add_channel(session, -303)
 
-        reports = await service.send_batch(session, 30, pause_between=0)
+        reports = await service.send_batch(session, OWNER, 30, pause_between=0)
 
         assert len(reports) == 30
         assert len(bot.polls) == 30
@@ -274,7 +278,7 @@ class TestSendBatch:
         service, bot = quiz_service
         await self._add_channel(session, -304)
 
-        reports = await service.send_batch(session, 0, pause_between=0)
+        reports = await service.send_batch(session, OWNER, 0, pause_between=0)
 
         assert reports == []
         assert bot.polls == []
@@ -290,7 +294,7 @@ class TestSingleMessageDelivery:
     """
 
     async def _add_channel(self, session: AsyncSession, chat_id: int) -> None:
-        await ChannelRepository(session).upsert(
+        await ChannelRepository(session, OWNER).upsert(
             chat_id=chat_id, username=f"c{abs(chat_id)}", title="Channel"
         )
 
@@ -315,7 +319,7 @@ class TestSingleMessageDelivery:
         await self._add_channel(session, -401)
         await self._question_with_image(session, service.media)
 
-        await service.send_next(session, trigger=PostTrigger.MANUAL)
+        await service.send_next(session, OWNER, trigger=PostTrigger.MANUAL)
 
         assert len(bot.polls) == 1, "expected a single poll message"
         assert bot.photos == [], "the photo must not be sent as its own message"
@@ -325,7 +329,7 @@ class TestSingleMessageDelivery:
         await self._add_channel(session, -402)
         await self._question_with_image(session, service.media)
 
-        await service.send_next(session, trigger=PostTrigger.MANUAL)
+        await service.send_next(session, OWNER, trigger=PostTrigger.MANUAL)
 
         assert bot.polls[0].get("media") is not None
 
@@ -335,7 +339,7 @@ class TestSingleMessageDelivery:
         service, bot = quiz_service
         await self._add_channel(session, -403)
 
-        await service.send_next(session, trigger=PostTrigger.MANUAL)
+        await service.send_next(session, OWNER, trigger=PostTrigger.MANUAL)
 
         assert len(bot.polls) == 1
         assert bot.polls[0].get("media") is None
@@ -353,7 +357,7 @@ class TestSingleMessageDelivery:
         session.add(question)
         await session.flush()
 
-        report = await service.send_next(session, trigger=PostTrigger.MANUAL)
+        report = await service.send_next(session, OWNER, trigger=PostTrigger.MANUAL)
 
         assert report.succeeded == 1
         assert bot.polls[0].get("media") is None

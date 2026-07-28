@@ -21,10 +21,17 @@ class UserContextMiddleware(BaseMiddleware):
     Puts ``user``, ``lang`` and ``is_admin`` into the handler data so no handler
     has to repeat the lookup.
 
-    ``is_admin`` is decided against the ``ADMIN_IDS`` environment value, never
-    against the database column. The column is a cached convenience for display;
-    treating it as authoritative would mean a database write could grant somebody
-    the admin panel.
+    ``owner_id`` is the caller's own Telegram id, and it is what every per-user
+    repository scopes on. Each person runs their own channels, schedule and cycle
+    over the shared question bank, so a handler that forgets to scope would show
+    one user another's data.
+
+    ``is_admin`` no longer gates the panel — everybody gets their own. It marks
+    the installation's operator, who alone may refresh the shared question bank,
+    read the server logs and take backups. It is decided against the ``ADMIN_IDS``
+    environment value, never against the database column: that column is a cached
+    convenience for display, and treating it as authoritative would let a database
+    write hand somebody those powers.
     """
 
     def __init__(self, admin_ids: frozenset[int], default_language: str = "uz") -> None:
@@ -45,6 +52,7 @@ class UserContextMiddleware(BaseMiddleware):
             # Channel posts and similar updates carry no user; nothing to resolve.
             data.setdefault("lang", self.default_language)
             data.setdefault("is_admin", False)
+            data.setdefault("owner_id", None)
             return await handler(event, data)
 
         is_admin = telegram_user.id in self.admin_ids
@@ -62,6 +70,7 @@ class UserContextMiddleware(BaseMiddleware):
         )
 
         data["user"] = stored
+        data["owner_id"] = telegram_user.id
         data["is_new_user"] = is_new
         data["lang"] = translator.normalize(stored.language)
         data["is_admin"] = is_admin

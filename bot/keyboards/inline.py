@@ -94,17 +94,28 @@ def language_keyboard(prefix: str = CB.SET_UI_LANG) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def main_menu_keyboard(language: str, *, paused: bool) -> InlineKeyboardMarkup:
-    """The admin panel.
+def main_menu_keyboard(
+    language: str, *, paused: bool, is_operator: bool = False
+) -> InlineKeyboardMarkup:
+    """The panel.
 
     Pause and resume share a slot: only the action that currently applies is
-    shown, so the admin never has to work out which of two buttons is live.
+    shown, so nobody has to work out which of two buttons is live.
+
+    The installation-wide features are omitted for ordinary users rather than
+    shown and refused. Offering a button that answers "not allowed" teaches
+    people the bot is broken for them, when in fact everything they need — their
+    channel, their schedule, their statistics — is right there.
+
+    Args:
+        language: Interface language.
+        paused: Whether *this user's* schedule is currently suspended.
+        is_operator: Whether to include the installation-wide buttons.
     """
     builder = InlineKeyboardBuilder()
     builder.button(text=t("menu.connect_channel", language), callback_data=CB.CHANNELS)
     builder.button(text=t("menu.scheduler", language), callback_data=CB.SCHED)
     builder.button(text=t("menu.statistics", language), callback_data=CB.STATS)
-    builder.button(text=t("menu.update_tests", language), callback_data=CB.IMPORT)
     builder.button(text=t("menu.send_now", language), callback_data=CB.SEND_NOW)
 
     if paused:
@@ -112,10 +123,16 @@ def main_menu_keyboard(language: str, *, paused: bool) -> InlineKeyboardMarkup:
     else:
         builder.button(text=t("menu.pause", language), callback_data=CB.SCHED_PAUSE)
 
-    builder.button(text=t("menu.backup", language), callback_data=CB.BACKUP)
-    builder.button(text=t("menu.logs", language), callback_data=CB.LOGS)
     builder.button(text=t("menu.settings", language), callback_data=CB.SETTINGS)
-    builder.adjust(2, 2, 2, 2, 1)
+
+    rows = [2, 2, 2]
+    if is_operator:
+        builder.button(text=t("menu.update_tests", language), callback_data=CB.IMPORT)
+        builder.button(text=t("menu.backup", language), callback_data=CB.BACKUP)
+        builder.button(text=t("menu.logs", language), callback_data=CB.LOGS)
+        rows += [2, 1]
+
+    builder.adjust(*rows)
     return builder.as_markup()
 
 

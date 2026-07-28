@@ -27,6 +27,7 @@ async def handle_start(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
+    owner_id: int,
     branding: BrandingService,
     user: BotUser | None = None,
     lang: str = "uz",
@@ -46,19 +47,20 @@ async def handle_start(
         await message.answer(t("start.choose_language", lang), reply_markup=language_keyboard())
         return
 
-    await _send_greeting(message, session, branding, lang, is_admin)
+    await _send_greeting(message, session, owner_id, branding, lang, is_admin)
 
 
 @router.message(Command("help"))
 async def handle_help(
     message: Message,
     session: AsyncSession,
+    owner_id: int,
     branding: BrandingService,
     lang: str = "uz",
     is_admin: bool = False,
 ) -> None:
     """Same greeting as ``/start``, without resetting the language."""
-    await _send_greeting(message, session, branding, lang, is_admin)
+    await _send_greeting(message, session, owner_id, branding, lang, is_admin)
 
 
 @router.message(Command("language"))
@@ -71,6 +73,7 @@ async def handle_language_command(message: Message, lang: str = "uz") -> None:
 async def handle_language_choice(
     callback: CallbackQuery,
     session: AsyncSession,
+    owner_id: int,
     branding: BrandingService,
     is_admin: bool = False,
 ) -> None:
@@ -87,9 +90,9 @@ async def handle_language_choice(
 
     name = escape_html(callback.from_user.full_name if callback.from_user else "")
     if is_admin:
-        paused = await SettingsRepository(session).is_scheduler_paused()
+        paused = await SettingsRepository(session, owner_id).is_scheduler_paused()
         caption = t("start.welcome_admin", language, name=name)
-        markup = main_menu_keyboard(language, paused=paused)
+        markup = main_menu_keyboard(language, paused=paused, is_operator=is_admin)
     else:
         caption = t("start.welcome_user", language, name=name)
         markup = None
@@ -110,6 +113,7 @@ async def handle_language_choice(
 async def _send_greeting(
     message: Message,
     session: AsyncSession,
+    owner_id: int,
     branding: BrandingService,
     language: str,
     is_admin: bool,
@@ -118,9 +122,9 @@ async def _send_greeting(
     name = escape_html(message.from_user.full_name if message.from_user else "")
 
     if is_admin:
-        paused = await SettingsRepository(session).is_scheduler_paused()
+        paused = await SettingsRepository(session, owner_id).is_scheduler_paused()
         caption = t("start.welcome_admin", language, name=name)
-        markup = main_menu_keyboard(language, paused=paused)
+        markup = main_menu_keyboard(language, paused=paused, is_operator=is_admin)
     else:
         caption = t("start.welcome_user", language, name=name)
         markup = None
