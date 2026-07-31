@@ -15,8 +15,9 @@ that thing itself alive?**
 | | Runs when the PC is off | Cost | Setup |
 |---|---|---|---|
 | **Windows Scheduled Task** | ❌ no | free | 1 command |
-| **VPS + systemd** | ✅ yes | ~$4–6/month | ~15 minutes |
-| **VPS + Docker** | ✅ yes | ~$4–6/month | ~10 minutes |
+| **Oracle Cloud Always Free** | ✅ yes | free | ~20 minutes |
+| **VPS + Docker** | ✅ yes | ~€5–8/month | ~10 minutes |
+| **VPS + systemd** | ✅ yes | ~€5–8/month | ~15 minutes |
 | **Railway / Render** | ✅ yes | free tier, then ~$5 | ~5 minutes |
 
 A desktop is not a server. A Scheduled Task survives a crash and a logout, but
@@ -50,8 +51,13 @@ sleep → Never`) and set active hours for Windows Update.
 
 ## Option 2 — VPS with Docker (recommended)
 
-Any provider works. Hetzner CX22 (~€4/mo), Contabo, DigitalOcean, Hostinger.
-Pick one near your users; for Uzbekistan, a European region is fine.
+Any provider works. Hetzner CX22 is 2 vCPU / 4 GB / 40 GB at €7.99/mo as of
+April 2026 — check the current price, it rose from €5.99 and these figures go
+stale. Contabo and DigitalOcean are comparable. Pick a region near your users;
+for Uzbekistan a European one is fine.
+
+The bot is one small Python process with a modest database, so the cheapest
+plan any provider sells is more than enough — do not size up for it.
 
 ```bash
 ssh root@YOUR_SERVER_IP
@@ -84,7 +90,31 @@ docker compose logs -f bot
 
 ---
 
-## Option 3 — VPS without Docker (systemd)
+## Option 3 — Oracle Cloud Always Free (free, with real caveats)
+
+Genuinely free forever, and enough machine for this bot several times over. Worth
+trying before paying anyone, provided you go in knowing the catches:
+
+- **Capacity.** The free ARM shape is frequently unavailable in a given home
+  region. You may see "Out of capacity" for days, and the region cannot be
+  changed after sign-up.
+- **The allowance shrank.** It was 4 OCPU / 24 GB; since 15 June 2026 free-tier
+  accounts get 2 OCPU / 12 GB. Oracle made no announcement.
+- **Idle instances can be reclaimed.** This bot polls Telegram continuously, so
+  it is not idle — but do not park an unused second instance there.
+- **A card is required** at sign-up for identity verification.
+
+Pick **Ubuntu 24.04** and an **Ampere A1** shape, then follow
+[UBUNTU-24.04.md](UBUNTU-24.04.md) exactly — it is written for that release, and
+everything in it is architecture-independent.
+
+One Oracle-specific step: their images ship with a restrictive iptables policy
+*and* a cloud firewall. The bot needs no inbound port beyond SSH, so you can
+leave both alone — unlike a web app, there is nothing to open.
+
+---
+
+## Option 4 — VPS without Docker (systemd)
 
 ```bash
 sudo adduser --system --group --home /opt/turon-avto-test-bot turon
@@ -106,7 +136,7 @@ journalctl -u turon-bot -f
 
 ---
 
-## Option 4 — Railway or Render (no server to manage)
+## Option 5 — Railway or Render (no server to manage)
 
 Both deploy straight from the GitHub repository.
 
