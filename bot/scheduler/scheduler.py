@@ -10,13 +10,16 @@ read, rather than pickled job objects.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
+from bot.config.settings import PROJECT_ROOT
 from bot.database.models.event_log import EventType
 from bot.database.models.quiz_post import PostTrigger
 from bot.database.repositories import (
@@ -25,7 +28,13 @@ from bot.database.repositories import (
     ScheduleRepository,
     SettingsRepository,
 )
-from bot.scheduler.jobs import JobContext, run_maintenance, run_scheduled_post, run_slot
+from bot.scheduler.jobs import (
+    JobContext,
+    run_maintenance,
+    run_scheduled_post,
+    run_slot,
+    write_heartbeat,
+)
 from bot.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +42,7 @@ logger = get_logger(__name__)
 #: Prefix for per-slot job ids, so a reload can find and replace them.
 _SLOT_JOB_PREFIX = "quiz_slot_"
 _MAINTENANCE_JOB_ID = "nightly_maintenance"
+_HEARTBEAT_JOB_ID = "heartbeat"
 
 
 class QuizScheduler:
@@ -44,6 +54,7 @@ class QuizScheduler:
         *,
         timezone: ZoneInfo,
         misfire_grace: int = 3600,
+        heartbeat_path: Path | None = None,
     ) -> None:
         """Configure the scheduler.
 
@@ -54,10 +65,13 @@ class QuizScheduler:
                 Tashkent.
             misfire_grace: How late a run may fire after its scheduled moment
                 before being abandoned.
+            heartbeat_path: File touched every minute to prove the event loop is
+                alive. Defaults to ``logs/heartbeat`` beside the project.
         """
         self.context = context
         self.timezone = timezone
         self.misfire_grace = misfire_grace
+        self.heartbeat_path = heartbeat_path or (PROJECT_ROOT / "logs" / "heartbeat")
 
         self._scheduler = AsyncIOScheduler(
             jobstores={"default": MemoryJobStore()},
@@ -86,6 +100,7 @@ class QuizScheduler:
 
         await self.reload()
         self._register_maintenance()
+        self._register_heartbeat()
 
         async with self.context.db.session() as session:
             times = await ScheduleRepository.distinct_enabled_times(session)
@@ -146,6 +161,21 @@ class QuizScheduler:
             id=_MAINTENANCE_JOB_ID,
             name="Nightly maintenance",
             kwargs={"context": self.context},
+            replace_existing=True,
+        )
+
+    def _register_heartbeat(self) -> None:
+        """Register the liveness heartbeat.
+
+        Every minute, so an external watchdog can call the bot stuck after a few
+        missed beats without being trigger-happy about one slow tick.
+        """
+        self._scheduler.add_job(
+            write_heartbeat,
+            trigger=IntervalTrigger(minutes=1, timezone=self.timezone),
+            id=_HEARTBEAT_JOB_ID,
+            name="Liveness heartbeat",
+            kwargs={"context": self.context, "path": self.heartbeat_path},
             replace_existing=True,
         )
 

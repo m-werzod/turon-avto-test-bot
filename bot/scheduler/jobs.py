@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from bot.database.models.event_log import EventType
@@ -180,6 +181,25 @@ async def run_scheduled_post(
                     )
 
     return reports
+
+
+async def write_heartbeat(context: JobContext, *, path: Path) -> None:
+    """Touch a file to prove the event loop is still turning.
+
+    A supervisor restarts a process that *exits*. It cannot tell that a process
+    still holding its PID has stopped doing anything — a wedged event loop and a
+    quietly idle one look identical from outside. This is the difference: if the
+    timestamp stops advancing, the loop is stuck even though the process lives.
+
+    Deliberately touches the file rather than logging: an idle bot writes no log
+    lines, so log freshness proves nothing.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(datetime.now(context.timezone).isoformat(), encoding="utf-8")
+    except OSError as exc:
+        # Never fatal: losing the heartbeat costs monitoring, not posting.
+        logger.warning("Could not write heartbeat to %s: %s", path, exc)
 
 
 async def run_maintenance(context: JobContext) -> None:

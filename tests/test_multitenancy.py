@@ -214,9 +214,7 @@ class TestChannelOwnershipConflict:
             )
 
     async def test_the_original_owner_keeps_it(self, session: AsyncSession) -> None:
-        await ChannelRepository(session, ALICE).upsert(
-            chat_id=-1010, username="mine", title="Mine"
-        )
+        await ChannelRepository(session, ALICE).upsert(chat_id=-1010, username="mine", title="Mine")
         with pytest.raises(ChannelAlreadyConnectedError):
             await ChannelRepository(session, BOB).upsert(
                 chat_id=-1010, username="mine", title="Mine"

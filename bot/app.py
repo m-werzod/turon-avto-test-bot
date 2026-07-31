@@ -40,6 +40,7 @@ from bot.services import (
     QuizService,
     StatsService,
 )
+from bot.utils.instance_lock import single_instance
 from bot.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -91,6 +92,7 @@ class Application:
             ),
             timezone=settings.timezone,
             misfire_grace=settings.scheduler_misfire_grace,
+            heartbeat_path=settings.log_dir / "heartbeat",
         )
 
         self._configure_dispatcher()
@@ -186,6 +188,15 @@ class Application:
         stop_event = asyncio.Event()
         self._install_signal_handlers(stop_event)
 
+        # Before anything reaches Telegram: two pollers on one token make both
+        # unreliable without either of them failing outright, and a supervisor
+        # restarting a process that has not finished dying reaches that state on
+        # its own.
+        async with single_instance(self.database.engine, lock_dir=self.settings.log_dir):
+            await self._run_locked(stop_event)
+
+    async def _run_locked(self, stop_event: asyncio.Event) -> None:
+        """Start up, poll, and shut down. Called with the instance lock held."""
         await self._startup()
 
         polling = asyncio.create_task(

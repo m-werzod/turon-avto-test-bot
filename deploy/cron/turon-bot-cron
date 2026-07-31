@@ -1,0 +1,39 @@
+# Cron jobs for the Turon Avto Test bot.
+#
+#   sudo cp deploy/cron/turon-bot-cron /etc/cron.d/turon-bot
+#   sudo chmod 644 /etc/cron.d/turon-bot
+#   sudo systemctl restart cron
+#
+# /etc/cron.d entries need a user column and a full environment — cron runs with
+# almost no PATH, and a bare `python` here would not resolve.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# --- what is NOT here, and why ------------------------------------------------
+# Quiz posting is not a cron job. The bot runs APScheduler in-process, because
+# each user picks their own times and changes them from the panel — cron would
+# have to be rewritten on every edit, and would have no way to know whose
+# schedule it was firing. Cron here only does host-level housekeeping.
+
+# --- nightly database dump (03:15) ---------------------------------------------
+# Independent of the bot's own backup button: this keeps running if the bot is
+# down, which is when a backup is most likely to matter.
+15 3 * * * turon pg_dump -Fc turon_avto > /opt/turon-avto-test-bot/backups/db-$(date +\%F).dump 2>>/var/log/turon-bot/cron.log
+
+# --- prune dumps older than 14 days (03:45) ------------------------------------
+# Each dump is a few MB and they accumulate silently until the disk fills.
+45 3 * * * turon find /opt/turon-avto-test-bot/backups -name 'db-*.dump' -mtime +14 -delete 2>>/var/log/turon-bot/cron.log
+
+# --- refresh the shared question bank (Sunday 04:30) ---------------------------
+# The sources publish new questions occasionally. The import is idempotent, so
+# this adds only what is new. Runs weekly rather than nightly out of courtesy to
+# the source sites.
+30 4 * * 0 turon /opt/turon-avto-test-bot/.venv/bin/python /opt/turon-avto-test-bot/scripts/refresh_questions.py >>/var/log/turon-bot/cron.log 2>&1
+
+# --- watchdog (every 10 minutes) ------------------------------------------------
+# Supervisor restarts a process that *exits*. It cannot tell that a process which
+# is still alive has stopped polling — a wedged event loop looks identical to a
+# healthy idle one. This notices staleness and asks supervisor to restart.
+*/10 * * * * root /opt/turon-avto-test-bot/deploy/cron/watchdog.sh >>/var/log/turon-bot/cron.log 2>&1
