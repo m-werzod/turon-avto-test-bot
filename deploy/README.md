@@ -34,7 +34,8 @@ somewhere that is awake at 07:00.
 powershell -ExecutionPolicy Bypass -File deploy\install-windows-task.ps1
 ```
 
-Starts the bot at every login and restarts it within a minute if it stops.
+Starts the bot at login, and re-checks every three minutes — if the process has
+died, it starts again. Verified by killing it: back up in about a minute.
 
 ```powershell
 Start-ScheduledTask -TaskName TuronAvtoTestBot          # start now

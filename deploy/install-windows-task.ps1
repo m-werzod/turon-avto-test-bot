@@ -67,23 +67,42 @@ $action = New-ScheduledTaskAction `
     -Argument "-u -m bot" `
     -WorkingDirectory $root
 
-$triggers = @(
-    New-ScheduledTaskTrigger -AtLogOn
-)
+# Two triggers, and the second is the one that actually keeps it alive.
+#
+# `RestartInterval`/`RestartCount` look like the right tool and are not: Task
+# Scheduler only applies them when the *task* is judged to have failed, and a
+# killed or crashed child process frequently is not — the task simply goes back
+# to Ready and sits there. Tested by killing the process: it stayed dead.
+#
+# A trigger that re-fires every few minutes is reliable because it does not
+# depend on that judgement at all. Paired with `MultipleInstances IgnoreNew`, a
+# fire while the bot is healthy is discarded, and a fire while it is dead starts
+# it again. Worst case the bot is down for one interval.
+$logon = New-ScheduledTaskTrigger -AtLogOn
+
+$keepalive = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2)
+$keepalive.Repetition = (
+    New-ScheduledTaskTrigger -Once -At (Get-Date) `
+        -RepetitionInterval (New-TimeSpan -Minutes 3) `
+        -RepetitionDuration ([TimeSpan]::FromDays(3650))
+).Repetition
+
+$triggers = @($logon, $keepalive)
 
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
-    -RestartInterval (New-TimeSpan -Minutes 1) `
-    -RestartCount 999 `
     -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
     -MultipleInstances IgnoreNew
 
 # ExecutionTimeLimit 0 means "no limit": the default kills a task after three
 # days, which would silently stop the bot mid-week.
-# MultipleInstances IgnoreNew prevents a second copy starting: two pollers on one
-# token fight over getUpdates and neither works reliably.
+#
+# MultipleInstances IgnoreNew is what makes the repeating trigger safe. Without
+# it every fire would start another copy, and two pollers on one token fight over
+# getUpdates until neither works. The bot also refuses to start twice on its own,
+# but relying on that would mean a failed start every three minutes in the log.
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
@@ -101,7 +120,7 @@ Register-ScheduledTask `
 Write-Host ""
 Write-Host "Registered '$TaskName'." -ForegroundColor Green
 Write-Host "  starts:   when you log in"
-Write-Host "  restarts: every minute if it stops, indefinitely"
+Write-Host "  checks:   every 3 minutes; restarts it if it has died"
 Write-Host ""
 Write-Host "Start it now:   Start-ScheduledTask -TaskName $TaskName"
 Write-Host "Check it:       Get-ScheduledTask -TaskName $TaskName | Get-ScheduledTaskInfo"
