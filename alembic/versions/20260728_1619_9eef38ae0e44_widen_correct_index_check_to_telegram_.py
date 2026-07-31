@@ -106,9 +106,9 @@ def upgrade() -> None:
         _rebuild_sqlite(from_bound=4, to_bound=10, from_name=OLD_CONSTRAINT, to_name=NEW_CONSTRAINT)
         return
 
-    op.drop_constraint(OLD_CONSTRAINT, "questions", type_="check")
+    op.drop_constraint(op.f(OLD_CONSTRAINT), "questions", type_="check")
     op.create_check_constraint(
-        NEW_CONSTRAINT, "questions", "correct_index >= 0 AND correct_index < 10"
+        op.f(NEW_CONSTRAINT), "questions", "correct_index >= 0 AND correct_index < 10"
     )
 
 
@@ -121,7 +121,7 @@ def downgrade() -> None:
         _rebuild_sqlite(from_bound=10, to_bound=4, from_name=NEW_CONSTRAINT, to_name=OLD_CONSTRAINT)
         return
 
-    op.drop_constraint(NEW_CONSTRAINT, "questions", type_="check")
+    op.drop_constraint(op.f(NEW_CONSTRAINT), "questions", type_="check")
     op.create_check_constraint(
-        OLD_CONSTRAINT, "questions", "correct_index >= 0 AND correct_index < 4"
+        op.f(OLD_CONSTRAINT), "questions", "correct_index >= 0 AND correct_index < 4"
     )
