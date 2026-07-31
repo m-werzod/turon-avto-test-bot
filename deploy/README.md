@@ -15,7 +15,8 @@ that thing itself alive?**
 | | Runs when the PC is off | Cost | Setup |
 |---|---|---|---|
 | **Windows Scheduled Task** | ❌ no | free | 1 command |
-| **Oracle Cloud Always Free** | ✅ yes | free | ~20 minutes |
+| **Oracle Cloud Always Free** | ✅ yes | **free** | ~20 minutes |
+| **Google Cloud e2-micro** | ✅ yes | **free** | ~20 minutes |
 | **VPS + Docker** | ✅ yes | ~€5–8/month | ~10 minutes |
 | **VPS + systemd** | ✅ yes | ~€5–8/month | ~15 minutes |
 | **Railway / Render** | ✅ yes | free tier, then ~$5 | ~5 minutes |
@@ -114,7 +115,30 @@ leave both alone — unlike a web app, there is nothing to open.
 
 ---
 
-## Option 4 — VPS without Docker (systemd)
+## Option 4 — Google Cloud e2-micro (free, the fallback when Oracle has no capacity)
+
+The other genuinely free-forever VM. Smaller than Oracle's, and with two limits
+that shape how you deploy it:
+
+- **1 GB RAM.** Enough for the bot, but not for the bot *and* PostgreSQL. Use
+  SQLite here (`DATABASE_URL=sqlite+aiosqlite:///./turon.db`) — for one process
+  posting a few times a day it is entirely adequate, and it is what the project
+  defaults to anyway.
+- **US regions only.** Free in `us-west1`, `us-central1` and `us-east1`; launch
+  anywhere else and you are billed at the normal rate. The extra latency to
+  Telegram is irrelevant for scheduled posting.
+- **1 GB egress per month.** Images are uploaded to Telegram once and thereafter
+  resent by `file_id`, so the bank costs about 45 MB spread across its first
+  cycle and almost nothing after that. Comfortable, but not unlimited — if you
+  re-import with images repeatedly you will notice.
+
+Create an **e2-micro** with **Ubuntu 24.04**, then follow
+[UBUNTU-24.04.md](UBUNTU-24.04.md), skipping section 2 (PostgreSQL) and setting
+the SQLite DSN in section 4 instead.
+
+---
+
+## Option 5 — VPS without Docker (systemd)
 
 ```bash
 sudo adduser --system --group --home /opt/turon-avto-test-bot turon
@@ -136,7 +160,7 @@ journalctl -u turon-bot -f
 
 ---
 
-## Option 5 — Railway or Render (no server to manage)
+## Option 6 — Railway or Render (no server to manage)
 
 Both deploy straight from the GitHub repository.
 
